@@ -182,12 +182,21 @@
                             <label class="block text-sm font-semibold text-gray-700 mb-1">印章姓名：</label>
                             <input type="text" id="stamp-name" value="許博凱" class="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center font-bold text-lg">
                         </div>
+                        <div class="flex gap-3">
+                            <div class="flex-1">
+                                <label class="block text-sm font-semibold text-gray-700 mb-1">印章日期：</label>
+                                <input type="date" id="stamp-date" class="w-full border border-gray-300 rounded px-2 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+                            </div>
+                            <div class="flex-none">
+                                <label class="block text-sm font-semibold text-gray-700 mb-1">印章顏色：</label>
+                                <input type="color" id="stamp-color" value="#1d4ed8" class="w-12 h-10 rounded cursor-pointer border border-gray-300 p-0.5">
+                            </div>
+                        </div>
                         <div>
                             <label class="block text-sm font-semibold text-gray-700 mb-1">印章大小：<span id="stamp-size-label" class="text-blue-600">80</span></label>
                             <input type="range" id="stamp-size" min="30" max="200" value="80" class="w-full accent-blue-600">
                         </div>
                         <div>
-                            <!-- 角度選單 -->
                             <label class="block text-sm font-semibold text-gray-700 mb-1">旋轉角度：</label>
                             <select id="stamp-rotation" class="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold bg-white">
                                 <option value="0">0°</option>
@@ -470,6 +479,17 @@
             }
             const savedClaudeKey = localStorage.getItem('claude_key') || '';
             if (savedClaudeKey) claudeApiKeyInput.value = savedClaudeKey;
+
+            // 印章顏色
+            const savedColor = localStorage.getItem('s_color') || '#1d4ed8';
+            document.getElementById('stamp-color').value = savedColor;
+
+            // 印章日期預設今天
+            const today = new Date();
+            const yyyy = today.getFullYear();
+            const mm = String(today.getMonth() + 1).padStart(2, '0');
+            const dd = String(today.getDate()).padStart(2, '0');
+            document.getElementById('stamp-date').value = `${yyyy}-${mm}-${dd}`;
         };
         loadSavedSettings();
 
@@ -515,6 +535,11 @@
         });
         stampNameInput.addEventListener('input', (e) => {
             saveToStorage('s_name', e.target.value);
+            generateStampImage();
+        });
+        document.getElementById('stamp-date').addEventListener('change', () => generateStampImage());
+        document.getElementById('stamp-color').addEventListener('input', (e) => {
+            saveToStorage('s_color', e.target.value);
             generateStampImage();
         });
         
@@ -744,9 +769,19 @@
             const canvas = document.getElementById('stamp-template');
             canvas.width = 200; canvas.height = 200;
             const ctx = canvas.getContext('2d');
-            const now = new Date();
-            const dateStr = `${now.getFullYear()}. ${now.getMonth()+1}. ${now.getDate()}`;
-            const blueColor = '#1d4ed8'; 
+            // 日期：優先使用使用者選擇的日期，否則用今天
+            const stampDateEl = document.getElementById('stamp-date');
+            let dateStr;
+            if (stampDateEl && stampDateEl.value) {
+                const d = new Date(stampDateEl.value + 'T00:00:00');
+                dateStr = `${d.getFullYear()}. ${d.getMonth()+1}. ${d.getDate()}`;
+            } else {
+                const now = new Date();
+                dateStr = `${now.getFullYear()}. ${now.getMonth()+1}. ${now.getDate()}`;
+            }
+            // 顏色：使用使用者選擇的顏色，預設藍色
+            const stampColorEl = document.getElementById('stamp-color');
+            const blueColor = (stampColorEl && stampColorEl.value) ? stampColorEl.value : '#1d4ed8';
 
             const name = stampNameInput.value.trim() || '印章';
             let topText = '', bottomText = '';
@@ -856,20 +891,54 @@
             }
         });
 
+        let lazyObserver = null;
+
         async function renderPdf(data) {
             pdfContainer.innerHTML = '';
+            if (lazyObserver) { lazyObserver.disconnect(); lazyObserver = null; }
+
             const loadingTask = pdfjsLib.getDocument({ data: data.slice(0) });
             pdfInstance = await loadingTask.promise;
-            
-            for (let i = 1; i <= pdfInstance.numPages; i++) {
-                await renderSinglePage(i);
-            }
+
+            // 先渲染第一頁，立即讓使用者看到畫面
+            await renderSinglePage(1);
 
             welcomeScreen.classList.add('hidden');
             editorUi.classList.remove('hidden');
             saveBtn.disabled = false;
             shareBtn.disabled = false;
             loadingOverlay.style.display = 'none';
+
+            // 其餘頁建立佔位符，等滾動到才渲染
+            for (let i = 2; i <= pdfInstance.numPages; i++) {
+                const pageIndex = i - 1;
+                const wrapper = document.createElement('div');
+                wrapper.className = 'relative inline-block w-full text-center mb-4 bg-white';
+                wrapper.dataset.wrapperIndex = pageIndex;
+                wrapper.dataset.needsRender = 'true';
+                wrapper.style.minHeight = '500px';
+                wrapper.innerHTML = `<div class="flex items-center justify-center" style="height:500px">
+                    <div class="text-center text-gray-400">
+                        <div class="text-4xl mb-2 animate-pulse">📄</div>
+                        <p class="text-sm">第 ${i} 頁</p>
+                    </div>
+                </div>`;
+                pdfContainer.appendChild(wrapper);
+            }
+
+            // IntersectionObserver：滾動到才渲染
+            lazyObserver = new IntersectionObserver(async (entries) => {
+                for (const entry of entries) {
+                    if (entry.isIntersecting && entry.target.dataset.needsRender === 'true') {
+                        entry.target.dataset.needsRender = 'false';
+                        lazyObserver.unobserve(entry.target);
+                        const pageNum = parseInt(entry.target.dataset.wrapperIndex) + 1;
+                        await renderSinglePage(pageNum);
+                    }
+                }
+            }, { rootMargin: '300px' });
+
+            document.querySelectorAll('[data-needs-render="true"]').forEach(el => lazyObserver.observe(el));
         }
 
         async function renderSinglePage(pageNumber) {
