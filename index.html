@@ -6,6 +6,7 @@
     <title>電子印章系統 - 專業查帳版</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@700&display=swap');
@@ -52,6 +53,125 @@
 
     <img id="hover-preview" src="" alt="preview">
 
+    <!-- ===== 請購單填寫 Modal ===== -->
+    <div id="form-modal" class="hidden fixed inset-0 bg-black bg-opacity-60 z-50 flex items-start justify-center p-3 overflow-y-auto">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-3xl my-4">
+
+            <!-- Modal Header -->
+            <div class="flex items-center justify-between px-5 py-3 border-b bg-indigo-50 rounded-t-xl">
+                <h2 class="font-bold text-base text-indigo-800">📝 新增請購單 (W5010)</h2>
+                <button onclick="closeFormModal()" class="text-gray-400 hover:text-gray-700 text-2xl leading-none font-bold">×</button>
+            </div>
+
+            <!-- 可列印表單區域 -->
+            <div id="printable-form" class="p-8 bg-white" style="font-family:'Microsoft JhengHei',sans-serif; font-size:13px;">
+
+                <!-- 標題 -->
+                <div class="text-center mb-4">
+                    <div class="text-xl font-bold tracking-widest">許瑞興公司請購單</div>
+                    <div class="text-xs text-gray-400 mt-0.5">W5010</div>
+                </div>
+
+                <!-- 第一列：類別 / NO、申請單位 / 日期 -->
+                <div class="flex border border-gray-700">
+                    <div class="border-r border-gray-700 p-2" style="width:30%">
+                        <div class="text-xs font-bold mb-1">類　別：</div>
+                        <label class="flex items-center gap-1 text-xs mb-0.5"><input type="radio" name="form-cat" value="修繕"> 1.修繕</label>
+                        <label class="flex items-center gap-1 text-xs mb-0.5"><input type="radio" name="form-cat" value="新設" checked> 2.新設</label>
+                        <label class="flex items-center gap-1 text-xs"><input type="radio" name="form-cat" value="其他"> 3.其他</label>
+                    </div>
+                    <div class="border-r border-gray-700 p-2 flex-1">
+                        <div class="text-xs font-bold mb-1">申請單位：</div>
+                        <input type="text" id="form-unit" class="w-full border-b border-gray-400 outline-none text-sm pb-0.5 mb-2">
+                        <div class="text-xs font-bold mb-1">NO：</div>
+                        <input type="text" id="form-no" class="w-full border-b border-gray-400 outline-none text-sm pb-0.5">
+                    </div>
+                    <div class="p-2" style="width:28%">
+                        <div class="text-xs font-bold mb-1">申請日期：</div>
+                        <input type="date" id="form-apply-date" class="w-full border-b border-gray-400 outline-none text-xs pb-0.5 mb-2">
+                        <div class="text-xs font-bold mb-1">需要日期：</div>
+                        <input type="date" id="form-need-date" class="w-full border-b border-gray-400 outline-none text-xs pb-0.5">
+                    </div>
+                </div>
+
+                <!-- 依據 -->
+                <div class="border border-t-0 border-gray-700 px-2 py-1 flex items-center gap-2">
+                    <span class="text-xs font-bold whitespace-nowrap">依　據：</span>
+                    <input type="text" id="form-basis" class="flex-1 border-b border-gray-400 outline-none text-sm">
+                </div>
+
+                <!-- 項目表格 -->
+                <table class="w-full border-collapse" style="border:1px solid #374151; border-top:0;">
+                    <thead>
+                        <tr class="bg-gray-100 text-xs">
+                            <th class="border border-gray-700 p-1.5 text-left" style="width:28%">名稱</th>
+                            <th class="border border-gray-700 p-1.5 text-left" style="width:22%">材質規格</th>
+                            <th class="border border-gray-700 p-1.5" style="width:7%">單位</th>
+                            <th class="border border-gray-700 p-1.5" style="width:7%">數量</th>
+                            <th class="border border-gray-700 p-1.5" style="width:12%">單價</th>
+                            <th class="border border-gray-700 p-1.5" style="width:12%">總價</th>
+                            <th class="border border-gray-700 p-1.5" style="width:12%">請購單號</th>
+                        </tr>
+                    </thead>
+                    <tbody id="form-items-body"></tbody>
+                </table>
+
+                <!-- 財產管制 + 狀態 -->
+                <div class="border border-t-0 border-gray-700 px-2 py-1.5 flex flex-wrap items-center gap-4">
+                    <label class="flex items-center gap-1 text-xs font-bold">
+                        <input type="checkbox" id="form-asset"> 本件列入財產目錄管制
+                    </label>
+                    <div class="flex items-center gap-3 text-xs">
+                        <span class="font-bold">狀態：</span>
+                        <label class="flex items-center gap-1"><input type="checkbox" id="st-ordered"> 已訂</label>
+                        <label class="flex items-center gap-1"><input type="checkbox" id="st-sent"> 已送出</label>
+                        <label class="flex items-center gap-1"><input type="checkbox" id="st-in"> 已入</label>
+                        <label class="flex items-center gap-1"><input type="checkbox" id="st-pending"> 待處理</label>
+                    </div>
+                </div>
+
+                <!-- 用途 -->
+                <div class="border border-t-0 border-gray-700 px-2 py-1 flex items-center gap-2">
+                    <span class="text-xs font-bold whitespace-nowrap">用　途：</span>
+                    <input type="text" id="form-purpose" class="flex-1 border-b border-gray-400 outline-none text-sm">
+                </div>
+
+                <!-- 其他說明 -->
+                <div class="border border-t-0 border-gray-700 px-2 py-1">
+                    <div class="text-xs font-bold mb-1">其他說明：</div>
+                    <textarea id="form-notes" rows="2" class="w-full text-sm border border-gray-200 rounded outline-none p-1 resize-none"></textarea>
+                </div>
+
+                <!-- 簽核欄 -->
+                <div class="grid grid-cols-5 border border-t-0 border-gray-700 text-xs text-center">
+                    <div class="border-r border-gray-700 p-1"><div class="font-bold mb-8">核　准</div></div>
+                    <div class="border-r border-gray-700 p-1"><div class="font-bold mb-8">覆　核</div></div>
+                    <div class="border-r border-gray-700 p-1"><div class="font-bold mb-8">採購會簽</div></div>
+                    <div class="border-r border-gray-700 p-1"><div class="font-bold mb-8">主　管</div></div>
+                    <div class="p-1"><div class="font-bold mb-8">申請人</div></div>
+                </div>
+
+                <!-- 詢價欄 -->
+                <div class="grid grid-cols-3 border border-t-0 border-gray-700 text-xs text-center">
+                    <div class="border-r border-gray-700 p-1"><div class="font-bold mb-6">詢價廠商</div></div>
+                    <div class="border-r border-gray-700 p-1"><div class="font-bold mb-6">承辦廠商</div></div>
+                    <div class="p-1"><div class="font-bold mb-6">詢價人員簽章</div></div>
+                </div>
+
+            </div><!-- end printable-form -->
+
+            <!-- Modal Footer -->
+            <div class="px-5 py-3 border-t flex items-center justify-between bg-gray-50 rounded-b-xl">
+                <button onclick="addFormRow()" class="text-sm text-indigo-600 hover:underline font-medium">＋ 新增項目列</button>
+                <div class="flex gap-2">
+                    <button onclick="closeFormModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm bg-white hover:bg-gray-50">取消</button>
+                    <button onclick="convertFormToStamp()" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold shadow">🖊️ 開始蓋章</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- ===== END Modal ===== -->
+
     <div id="loading-overlay">
         <div class="text-center">
             <div class="inline-block animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-blue-500 mb-4"></div>
@@ -71,6 +191,9 @@
                 <label for="pdf-upload" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded cursor-pointer transition border border-gray-300 text-sm md:text-base font-bold shadow-sm">
                     選擇 PDF
                 </label>
+                <button id="new-form-btn" onclick="openFormModal()" class="bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-2 rounded transition text-sm md:text-base font-bold shadow-sm flex items-center gap-1">
+                    📝 <span class="hidden sm:inline">新增文件</span>
+                </button>
                 
                 <button id="undo-btn" class="bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-1 text-sm md:text-base shadow-sm" disabled title="撤銷上一個動作">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1413,6 +1536,123 @@
             const url = URL.createObjectURL(file); const a = document.createElement("a");
             a.href = url; a.download = filename; document.body.appendChild(a); a.click();
             setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 0);
+        }
+        // =============================================
+        // ==== 請購單表單功能 ====
+        // =============================================
+
+        function openFormModal() {
+            document.getElementById('form-modal').classList.remove('hidden');
+            // 預設今天日期
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('form-apply-date').value = today;
+            // 若表格是空的，自動加3列
+            if (document.getElementById('form-items-body').children.length === 0) {
+                addFormRow(); addFormRow(); addFormRow();
+            }
+        }
+
+        function closeFormModal() {
+            document.getElementById('form-modal').classList.add('hidden');
+        }
+
+        function addFormRow() {
+            const tbody = document.getElementById('form-items-body');
+            const rowIndex = tbody.children.length;
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="border border-gray-700 p-1">
+                    <input type="text" class="w-full outline-none text-sm" placeholder="品名">
+                </td>
+                <td class="border border-gray-700 p-1">
+                    <input type="text" class="w-full outline-none text-sm" placeholder="規格">
+                </td>
+                <td class="border border-gray-700 p-1">
+                    <input type="text" class="w-full outline-none text-xs text-center" placeholder="式">
+                </td>
+                <td class="border border-gray-700 p-1">
+                    <input type="number" class="qty-input w-full outline-none text-xs text-center" placeholder="0" min="0">
+                </td>
+                <td class="border border-gray-700 p-1">
+                    <input type="number" class="price-input w-full outline-none text-xs text-right" placeholder="0" min="0">
+                </td>
+                <td class="border border-gray-700 p-1">
+                    <input type="text" class="total-display w-full outline-none text-xs text-right bg-gray-50" readonly placeholder="自動計算">
+                </td>
+                <td class="border border-gray-700 p-1">
+                    <input type="text" class="w-full outline-none text-xs text-center" placeholder="">
+                </td>`;
+            tbody.appendChild(tr);
+
+            // 自動計算總價
+            const qty = tr.querySelector('.qty-input');
+            const price = tr.querySelector('.price-input');
+            const total = tr.querySelector('.total-display');
+            const calcTotal = () => {
+                const q = parseFloat(qty.value) || 0;
+                const p = parseFloat(price.value) || 0;
+                total.value = (q * p) > 0 ? (q * p).toLocaleString() : '';
+            };
+            qty.addEventListener('input', calcTotal);
+            price.addEventListener('input', calcTotal);
+        }
+
+        // 將表單轉為 PDF 並進入蓋章模式
+        async function convertFormToStamp() {
+            const formEl = document.getElementById('printable-form');
+            loadingOverlay.style.display = 'flex';
+            closeFormModal();
+
+            try {
+                // 1. 用 html2canvas 截圖表單
+                const canvas = await html2canvas(formEl, {
+                    scale: 2,
+                    useCORS: true,
+                    backgroundColor: '#ffffff',
+                    logging: false
+                });
+
+                // 2. 轉成 PNG ArrayBuffer
+                const imgDataUrl = canvas.toDataURL('image/png');
+                const base64 = imgDataUrl.split(',')[1];
+                const binary = atob(base64);
+                const imgBuffer = new ArrayBuffer(binary.length);
+                const view = new Uint8Array(imgBuffer);
+                for (let i = 0; i < binary.length; i++) view[i] = binary.charCodeAt(i);
+
+                // 3. 用 pdf-lib 建立 A4 PDF
+                const pdfDoc = await PDFDocument.create();
+                const img = await pdfDoc.embedPng(imgBuffer);
+
+                // 縮放至 A4 寬度 (595pt)
+                const a4W = 595, a4H = 842;
+                const scale = Math.min(a4W / img.width, a4H / img.height);
+                const drawW = img.width * scale;
+                const drawH = img.height * scale;
+
+                const page = pdfDoc.addPage([a4W, a4H]);
+                page.drawImage(img, {
+                    x: (a4W - drawW) / 2,
+                    y: a4H - drawH - ((a4H - drawH) / 2),
+                    width: drawW,
+                    height: drawH
+                });
+
+                const pdfBytes = await pdfDoc.save();
+
+                // 4. 載入至蓋章系統
+                originalFileName = '請購單';
+                currentPdfData = pdfBytes.buffer.slice(0);
+                annotations = [];
+                displayScale = null;
+                updateUndoBtn();
+                await renderPdf(currentPdfData);
+
+            } catch (e) {
+                alert('轉換失敗：' + e.message);
+                console.error(e);
+                loadingOverlay.style.display = 'none';
+            }
         }
     </script>
 </body>
