@@ -1601,54 +1601,57 @@
         async function convertFormToStamp() {
             const formEl = document.getElementById('printable-form');
             loadingOverlay.style.display = 'flex';
-            closeFormModal();
 
             try {
-                // 1. 用 html2canvas 截圖表單
+                // 1. 先截圖（Modal 必須還是可見狀態）
                 const canvas = await html2canvas(formEl, {
                     scale: 2,
                     useCORS: true,
+                    allowTaint: true,
                     backgroundColor: '#ffffff',
-                    logging: false
+                    logging: false,
+                    removeContainer: true
                 });
 
-                // 2. 轉成 PNG ArrayBuffer
+                // 2. 截圖完成後才關閉 Modal
+                closeFormModal();
+
+                // 3. Canvas 轉成 PNG Uint8Array
                 const imgDataUrl = canvas.toDataURL('image/png');
                 const base64 = imgDataUrl.split(',')[1];
                 const binary = atob(base64);
-                const imgBuffer = new ArrayBuffer(binary.length);
-                const view = new Uint8Array(imgBuffer);
-                for (let i = 0; i < binary.length; i++) view[i] = binary.charCodeAt(i);
+                const imgBytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) imgBytes[i] = binary.charCodeAt(i);
 
-                // 3. 用 pdf-lib 建立 A4 PDF
+                // 4. 用 pdf-lib 建立 A4 PDF
                 const pdfDoc = await PDFDocument.create();
-                const img = await pdfDoc.embedPng(imgBuffer);
+                const img = await pdfDoc.embedPng(imgBytes);
 
-                // 縮放至 A4 寬度 (595pt)
                 const a4W = 595, a4H = 842;
-                const scale = Math.min(a4W / img.width, a4H / img.height);
-                const drawW = img.width * scale;
-                const drawH = img.height * scale;
+                const scaleRatio = Math.min(a4W / img.width, a4H / img.height);
+                const drawW = img.width * scaleRatio;
+                const drawH = img.height * scaleRatio;
 
                 const page = pdfDoc.addPage([a4W, a4H]);
                 page.drawImage(img, {
                     x: (a4W - drawW) / 2,
-                    y: a4H - drawH - ((a4H - drawH) / 2),
+                    y: (a4H - drawH) / 2,
                     width: drawW,
                     height: drawH
                 });
 
                 const pdfBytes = await pdfDoc.save();
 
-                // 4. 載入至蓋章系統
+                // 5. 載入至蓋章系統
                 originalFileName = '請購單';
-                currentPdfData = pdfBytes.buffer.slice(0);
+                currentPdfData = pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength);
                 annotations = [];
                 displayScale = null;
                 updateUndoBtn();
                 await renderPdf(currentPdfData);
 
             } catch (e) {
+                closeFormModal();
                 alert('轉換失敗：' + e.message);
                 console.error(e);
                 loadingOverlay.style.display = 'none';
