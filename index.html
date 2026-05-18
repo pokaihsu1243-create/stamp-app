@@ -9,10 +9,13 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@700&display=swap');
-        
+
         body {
             background-color: #f3f4f6;
             font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+            /* 修復手機瀏覽器 100vh 含地址列導致版面偏移的問題 */
+            height: 100dvh;
+            height: -webkit-fill-available;
         }
         #pdf-container canvas {
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
@@ -48,7 +51,7 @@
     </style>
 </head>
 <!-- 【排版修復】加上 h-screen 強制限制螢幕高度，確保內部能夠產生捲軸 -->
-<body class="h-screen flex flex-col overflow-hidden bg-gray-50">
+<body class="flex flex-col overflow-hidden bg-gray-50">
 
     <img id="hover-preview" src="" alt="preview">
 
@@ -59,19 +62,25 @@
         </div>
     </div>
 
-    <!-- 導航欄 (flex-none 不縮放) -->
-    <nav class="flex-none bg-white shadow-md p-3 md:p-4 z-40 border-b border-gray-200">
+    <!-- 導航欄：sticky 確保手機也永遠固定在頂部 -->
+    <nav class="sticky top-0 flex-none bg-white shadow-md p-3 md:p-4 z-40 border-b border-gray-200">
         <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
             <h1 class="text-lg md:text-xl font-bold text-gray-800 flex items-center gap-2">
                 <span class="text-blue-600">●</span> 電子印章與標註系統
             </h1>
             
             <div class="flex items-center gap-2">
-                <input type="file" id="pdf-upload" accept="application/pdf" class="hidden">
+                <input type="file" id="pdf-upload" accept="application/pdf" multiple class="hidden">
                 <label for="pdf-upload" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded cursor-pointer transition border border-gray-300 text-sm md:text-base font-bold shadow-sm">
                     選擇 PDF
                 </label>
-                
+
+                <!-- 批次模式開關 -->
+                <button id="batch-toggle-btn" onclick="toggleBatchMode()" title="批次處理模式：一次載入多份 PDF 逐一處理"
+                    class="bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-2 rounded transition border border-gray-300 text-sm font-bold shadow-sm flex items-center gap-1">
+                    <span>📂</span><span class="hidden sm:inline">批次</span>
+                </button>
+
                 <button id="undo-btn" class="bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-1 text-sm md:text-base shadow-sm" disabled title="撤銷上一個動作">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
@@ -92,6 +101,15 @@
             </div>
         </div>
     </nav>
+
+    <!-- 批次進度列 (隱藏時不佔空間) -->
+    <div id="batch-bar" class="hidden flex-none bg-blue-700 text-white text-sm px-4 py-2 flex items-center gap-3 z-50">
+        <span class="font-bold whitespace-nowrap">📂 批次：</span>
+        <span id="batch-progress-text" class="font-bold whitespace-nowrap">第 1 / 1 份</span>
+        <span id="batch-file-name" class="truncate flex-1 text-blue-200 text-xs"></span>
+        <button id="batch-next-btn" onclick="batchNext()" class="bg-white text-blue-700 font-bold px-3 py-1 rounded text-xs hover:bg-blue-50 whitespace-nowrap transition">下一份 →</button>
+        <button onclick="batchStop()" class="bg-blue-500 hover:bg-blue-400 text-white px-3 py-1 rounded text-xs whitespace-nowrap transition">✕ 停止</button>
+    </div>
 
     <!-- 【排版修復】加上 min-h-0，確保 Flex 子元素能在容器內產生滾動條而不會撐破版面 -->
     <main class="flex-1 flex w-full overflow-hidden relative min-h-0">
@@ -175,7 +193,18 @@
                 <div class="flex-1 overflow-y-auto p-4 md:p-5 min-h-0">
                     <!-- 1. 印章設定面板 -->
                     <div id="settings-stamp" class="space-y-4">
-                        <div class="flex justify-center p-4 bg-slate-50 rounded-lg border border-slate-100 mb-4">
+                        <!-- 多組印章預設：快選列 -->
+                        <div class="bg-blue-50 border border-blue-100 rounded-lg p-3">
+                            <div class="flex items-center justify-between mb-2">
+                                <label class="text-xs font-bold text-blue-700">🔖 印章預設</label>
+                                <button onclick="saveStampPreset()" class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded transition font-bold">💾 儲存目前</button>
+                            </div>
+                            <div id="stamp-presets-list" class="flex flex-wrap gap-1.5 min-h-[28px]">
+                                <span class="text-xs text-gray-400 italic">（按「儲存目前」加入預設）</span>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-center p-4 bg-slate-50 rounded-lg border border-slate-100">
                             <canvas id="stamp-template" width="200" height="200" class="rounded-full shadow-md" style="width: 80px; height: 80px;"></canvas>
                         </div>
                         <div>
@@ -209,6 +238,14 @@
 
                     <!-- 2. 文字設定面板 -->
                     <div id="settings-text" class="space-y-4 hidden">
+                        <!-- 常用文字範本 -->
+                        <div class="bg-yellow-50 border border-yellow-100 rounded-lg p-3">
+                            <div class="flex items-center justify-between mb-2">
+                                <label class="text-xs font-bold text-yellow-700">📝 常用範本</label>
+                                <button onclick="saveTextTemplate()" class="text-xs bg-yellow-500 hover:bg-yellow-600 text-white px-2 py-1 rounded transition font-bold">＋ 儲存目前</button>
+                            </div>
+                            <div id="text-templates-list" class="flex flex-wrap gap-1.5"></div>
+                        </div>
                         <div>
                             <label class="block text-sm font-semibold text-gray-700 mb-1">註解文字：</label>
                             <textarea id="text-input" rows="2" class="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold">請確認此處有誤</textarea>
@@ -234,17 +271,43 @@
                         </div>
                     </div>
 
-                    <!-- 3. 畫筆設定面板 -->
+                    <!-- 3. 畫筆設定面板 (含子模式) -->
                     <div id="settings-pen" class="space-y-4 hidden">
-                        <div class="flex gap-4">
-                            <div class="flex-1">
-                                <label class="block text-sm font-semibold text-gray-700 mb-1">畫筆顏色：</label>
-                                <input type="color" id="pen-color" value="#ef4444" class="w-full h-10 rounded cursor-pointer border-0 p-0">
+                        <!-- 子模式選擇 -->
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">繪製模式：</label>
+                            <div class="flex gap-1.5">
+                                <button id="pen-mode-freehand" onclick="setPenMode('freehand')"
+                                    class="flex-1 py-2 px-1 text-xs font-bold rounded border-2 border-blue-400 bg-blue-50 text-blue-700">🖍️ 畫筆</button>
+                                <button id="pen-mode-highlight" onclick="setPenMode('highlight')"
+                                    class="flex-1 py-2 px-1 text-xs font-bold rounded border-2 border-gray-200 bg-white text-gray-600">🟡 螢光筆</button>
+                                <button id="pen-mode-border" onclick="setPenMode('border')"
+                                    class="flex-1 py-2 px-1 text-xs font-bold rounded border-2 border-gray-200 bg-white text-gray-600">🔲 邊框</button>
                             </div>
-                            <div class="flex-1">
-                                <label class="block text-sm font-semibold text-gray-700 mb-1">粗細：<span id="pen-size-label" class="text-blue-600">3</span></label>
-                                <input type="range" id="pen-size" min="1" max="20" value="3" class="w-full accent-blue-600">
+                        </div>
+
+                        <!-- 自由畫筆選項 -->
+                        <div id="pen-freehand-opts">
+                            <div class="flex gap-4">
+                                <div class="flex-1">
+                                    <label class="block text-sm font-semibold text-gray-700 mb-1">畫筆顏色：</label>
+                                    <input type="color" id="pen-color" value="#ef4444" class="w-full h-10 rounded cursor-pointer border-0 p-0">
+                                </div>
+                                <div class="flex-1">
+                                    <label class="block text-sm font-semibold text-gray-700 mb-1">粗細：<span id="pen-size-label" class="text-blue-600">3</span></label>
+                                    <input type="range" id="pen-size" min="1" max="20" value="3" class="w-full accent-blue-600">
+                                </div>
                             </div>
+                        </div>
+
+                        <!-- 螢光筆 / 邊框選項 -->
+                        <div id="pen-rect-opts" class="hidden space-y-3">
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-1">顏色：</label>
+                                <input type="color" id="rect-color" value="#facc15" class="w-full h-10 rounded cursor-pointer border border-gray-300 p-0.5">
+                            </div>
+                            <p id="pen-rect-hint" class="text-xs text-gray-500 bg-gray-50 p-2 rounded border border-gray-100">
+                                🟡 螢光筆：拖曳畫半透明矩形</p>
                         </div>
                     </div>
 
@@ -309,6 +372,8 @@
             <!-- 【排版修復】這裡的 min-h-0 是最重要的，它確保了內容不會撐爆這個 flex-1 容器，而是會在區域內正常顯示垂直滾動條！ -->
             <div class="flex-1 overflow-auto bg-gray-300 p-2 md:p-6 order-1 lg:order-2 min-h-0 relative" id="pdf-container">
                 <!-- PDF Canvases will be injected here -->
+                <!-- 頁碼顯示 -->
+                <div id="page-indicator" class="hidden fixed bottom-4 right-4 lg:bottom-6 lg:right-6 z-30 bg-black bg-opacity-60 text-white text-xs font-bold px-3 py-1.5 rounded-full pointer-events-none select-none shadow-lg">1 / 1</div>
             </div>
 
         </div>
@@ -333,7 +398,15 @@
 
         // 畫筆暫存狀態
         let isDrawing = false;
-        let currentPath = []; 
+        let currentPath = [];
+        let currentPenMode = 'freehand'; // 'freehand' | 'highlight' | 'border'
+        let rectStartPdf = null;
+        let savedImageData = null;
+
+        // 批次處理狀態
+        let batchFiles = [];
+        let batchIndex = 0;
+        let isBatchMode = false;
 
         // 拖曳平移 (Panning) 暫存狀態
         let isPanning = false;
@@ -867,9 +940,14 @@
         }
 
         uploadInput.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            await processFile(file);
-            e.target.value = ''; // 清空 value，確保下次選同一個檔案還是能觸發
+            const files = Array.from(e.target.files).filter(f => f.name.toLowerCase().endsWith('.pdf'));
+            if (files.length === 0) return;
+            if (isBatchMode) {
+                await addToBatch(files);
+            } else {
+                await processFile(files[0]);
+            }
+            e.target.value = '';
         });
 
         // 優化拖曳體驗
@@ -879,15 +957,14 @@
         });
 
         window.addEventListener('drop', async (e) => {
-            e.preventDefault(); 
-            if (e.dataTransfer.files.length > 0) {
-                const file = e.dataTransfer.files[0];
-                // 放寬驗證條件：確保無論作業系統怎麼給，只要是 PDF 都能過關
-                if (file.type === "application/pdf" || file.name.toLowerCase().endsWith('.pdf')) {
-                    await processFile(file);
-                } else {
-                    alert("⚠️ 格式錯誤！請拖曳 PDF 檔案。");
-                }
+            e.preventDefault();
+            const files = Array.from(e.dataTransfer.files).filter(f =>
+                f.type === "application/pdf" || f.name.toLowerCase().endsWith('.pdf'));
+            if (files.length === 0) { alert("⚠️ 格式錯誤！請拖曳 PDF 檔案。"); return; }
+            if (isBatchMode) {
+                await addToBatch(files);
+            } else {
+                await processFile(files[0]);
             }
         });
 
@@ -939,23 +1016,19 @@
             }, { rootMargin: '300px' });
 
             document.querySelectorAll('[data-needs-render="true"]').forEach(el => lazyObserver.observe(el));
+
+            // 頁碼顯示
+            const pageIndicator = document.getElementById('page-indicator');
+            pageIndicator.classList.remove('hidden');
+            updatePageIndicator();
         }
 
         async function renderSinglePage(pageNumber) {
             const pageIndex = pageNumber - 1;
             const page = await pdfInstance.getPage(pageNumber);
             const viewport = page.getViewport({ scale: RENDER_SCALE });
-            
-            let wrapper = document.querySelector(`[data-wrapper-index="${pageIndex}"]`);
-            if (!wrapper) {
-                wrapper = document.createElement('div');
-                wrapper.className = 'relative inline-block w-full text-center mb-4';
-                wrapper.dataset.wrapperIndex = pageIndex;
-                pdfContainer.appendChild(wrapper);
-            } else {
-                wrapper.innerHTML = '';
-            }
-            
+
+            // 【防閃爍】先把新 canvas 渲染完成，再做一次性替換
             const canvas = document.createElement('canvas');
             const context = canvas.getContext('2d');
             canvas.height = viewport.height;
@@ -963,16 +1036,16 @@
             canvas.dataset.pageIndex = pageIndex;
             canvas.pageViewport = viewport;
 
-            // 套用目前的縮放比例 (如果是在縮放後使用撤銷，可確保重繪大小維持一致)
             if (displayScale !== null) {
                 canvas.style.width = `${canvas.width * displayScale}px`;
                 canvas.style.maxWidth = 'none';
                 canvas.style.height = 'auto';
             }
-            
-            const renderContext = { canvasContext: context, viewport: viewport };
-            await page.render(renderContext).promise;
-            
+
+            // Step 1：渲染 PDF 頁面到新 canvas（此時舊 canvas 還在畫面上）
+            await page.render({ canvasContext: context, viewport: viewport }).promise;
+
+            // Step 2：把標註疊上去
             const pageAnnos = annotations.filter(a => a.pageIndex === pageIndex);
             for (const a of pageAnnos) {
                 if (a.type === 'stamp' || a.type === 'text') {
@@ -990,12 +1063,13 @@
                             context.restore();
                             resolve();
                         };
+                        img.onerror = resolve;
                     });
                 } else if (a.type === 'path') {
                     context.beginPath();
                     const start = viewport.convertToViewportPoint(a.path[0].pdfX, a.path[0].pdfY);
                     context.moveTo(start[0], start[1]);
-                    for(let i=1; i<a.path.length; i++) {
+                    for (let i = 1; i < a.path.length; i++) {
                         const pt = viewport.convertToViewportPoint(a.path[i].pdfX, a.path[i].pdfY);
                         context.lineTo(pt[0], pt[1]);
                     }
@@ -1003,19 +1077,51 @@
                     context.lineWidth = a.lineWidth * RENDER_SCALE;
                     context.lineCap = 'round'; context.lineJoin = 'round';
                     context.stroke();
+                } else if (a.type === 'rect') {
+                    const [rx1, ry1] = viewport.convertToViewportPoint(a.pdfX1, a.pdfY1);
+                    const [rx2, ry2] = viewport.convertToViewportPoint(a.pdfX2, a.pdfY2);
+                    const rx = Math.min(rx1, rx2), ry = Math.min(ry1, ry2);
+                    const rw = Math.abs(rx2 - rx1), rh = Math.abs(ry2 - ry1);
+                    context.save();
+                    if (a.penMode === 'highlight') {
+                        context.globalAlpha = 0.38;
+                        context.fillStyle = a.color;
+                        context.fillRect(rx, ry, rw, rh);
+                    } else {
+                        context.strokeStyle = a.color;
+                        context.lineWidth = 2.5 * RENDER_SCALE;
+                        context.strokeRect(rx, ry, rw, rh);
+                    }
+                    context.restore();
                 }
             }
 
-            // 禁用畫布的右鍵選單，讓右鍵專門用於拖曳
+            // Step 3：綁定事件
             canvas.addEventListener('contextmenu', e => e.preventDefault());
-
             canvas.addEventListener('pointerdown', handlePointerDown);
             canvas.addEventListener('pointermove', handlePointerMove);
             canvas.addEventListener('pointerup', handlePointerUp);
             canvas.addEventListener('pointercancel', handlePointerUp);
             canvas.addEventListener('pointerleave', hideHoverPreview);
-            
-            wrapper.appendChild(canvas);
+
+            // Step 4：一次性替換，避免空白閃爍
+            let wrapper = document.querySelector(`[data-wrapper-index="${pageIndex}"]`);
+            if (!wrapper) {
+                wrapper = document.createElement('div');
+                wrapper.className = 'relative inline-block w-full text-center mb-4';
+                wrapper.dataset.wrapperIndex = pageIndex;
+                pdfContainer.appendChild(wrapper);
+                wrapper.appendChild(canvas);
+            } else {
+                const oldCanvas = wrapper.querySelector('canvas');
+                if (oldCanvas) {
+                    wrapper.replaceChild(canvas, oldCanvas); // 原子替換，無空白期
+                } else {
+                    wrapper.innerHTML = '';
+                    wrapper.appendChild(canvas);
+                }
+            }
+
             updateCanvasTouchAction();
         }
 
@@ -1148,8 +1254,15 @@
 
             if (currentTool === 'pen') {
                 isDrawing = true;
-                currentPath = [{pdfX, pdfY}];
-                canvas.setPointerCapture(e.pointerId); 
+                if (currentPenMode === 'freehand') {
+                    currentPath = [{pdfX, pdfY}];
+                } else {
+                    // 矩形模式：儲存起點 + canvas 快照
+                    rectStartPdf = {pdfX, pdfY};
+                    const ctx = canvas.getContext('2d');
+                    savedImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                }
+                canvas.setPointerCapture(e.pointerId);
             }
         }
 
@@ -1175,25 +1288,43 @@
             }
 
             if (currentTool !== 'pen' || !isDrawing) return;
-            e.preventDefault(); 
+            e.preventDefault();
 
             const canvas = e.target;
             const [pdfX, pdfY] = getEventPdfPoint(e, canvas);
-            currentPath.push({pdfX, pdfY});
-
             const ctx = canvas.getContext('2d');
-            ctx.beginPath();
-            const p1 = currentPath[currentPath.length - 2];
-            const p2 = currentPath[currentPath.length - 1];
-            
-            const [x1, y1] = canvas.pageViewport.convertToViewportPoint(p1.pdfX, p1.pdfY);
-            const [x2, y2] = canvas.pageViewport.convertToViewportPoint(p2.pdfX, p2.pdfY);
-            
-            ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
-            ctx.strokeStyle = penColorInput.value;
-            ctx.lineWidth = parseInt(penSizeInput.value) * RENDER_SCALE;
-            ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-            ctx.stroke();
+
+            if (currentPenMode === 'freehand') {
+                currentPath.push({pdfX, pdfY});
+                ctx.beginPath();
+                const p1 = currentPath[currentPath.length - 2];
+                const p2 = currentPath[currentPath.length - 1];
+                const [x1, y1] = canvas.pageViewport.convertToViewportPoint(p1.pdfX, p1.pdfY);
+                const [x2, y2] = canvas.pageViewport.convertToViewportPoint(p2.pdfX, p2.pdfY);
+                ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+                ctx.strokeStyle = penColorInput.value;
+                ctx.lineWidth = parseInt(penSizeInput.value) * RENDER_SCALE;
+                ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+                ctx.stroke();
+            } else {
+                // 螢光筆 / 邊框：每次移動恢復快照再畫預覽矩形
+                if (!savedImageData || !rectStartPdf) return;
+                ctx.putImageData(savedImageData, 0, 0);
+                const [sx, sy] = canvas.pageViewport.convertToViewportPoint(rectStartPdf.pdfX, rectStartPdf.pdfY);
+                const [ex, ey] = canvas.pageViewport.convertToViewportPoint(pdfX, pdfY);
+                const rectColor = document.getElementById('rect-color').value;
+                ctx.save();
+                if (currentPenMode === 'highlight') {
+                    ctx.globalAlpha = 0.38;
+                    ctx.fillStyle = rectColor;
+                    ctx.fillRect(sx, sy, ex - sx, ey - sy);
+                } else {
+                    ctx.strokeStyle = rectColor;
+                    ctx.lineWidth = 2.5 * RENDER_SCALE;
+                    ctx.strokeRect(sx, sy, ex - sx, ey - sy);
+                }
+                ctx.restore();
+            }
         }
 
         function handlePointerUp(e) {
@@ -1266,12 +1397,31 @@
                 isDrawing = false;
                 canvas.releasePointerCapture(e.pointerId);
 
-                if (currentPath.length > 1) {
-                    annotations.push({
-                        type: 'path', pageIndex: parseInt(canvas.dataset.pageIndex),
-                        path: currentPath, color: penColorInput.value, lineWidth: parseInt(penSizeInput.value)
-                    });
-                    updateUndoBtn();
+                if (currentPenMode === 'freehand') {
+                    if (currentPath.length > 1) {
+                        annotations.push({
+                            type: 'path', pageIndex: parseInt(canvas.dataset.pageIndex),
+                            path: currentPath, color: penColorInput.value, lineWidth: parseInt(penSizeInput.value)
+                        });
+                        updateUndoBtn();
+                    }
+                } else {
+                    // 矩形確認：提交標註
+                    if (rectStartPdf) {
+                        const [pdfX2, pdfY2] = getEventPdfPoint(e, canvas);
+                        const rectColor = document.getElementById('rect-color').value;
+                        if (Math.abs(pdfX2 - rectStartPdf.pdfX) > 2 || Math.abs(pdfY2 - rectStartPdf.pdfY) > 2) {
+                            annotations.push({
+                                type: 'rect', penMode: currentPenMode,
+                                pageIndex: parseInt(canvas.dataset.pageIndex),
+                                pdfX1: rectStartPdf.pdfX, pdfY1: rectStartPdf.pdfY,
+                                pdfX2: pdfX2, pdfY2: pdfY2, color: rectColor
+                            });
+                            updateUndoBtn();
+                        }
+                        rectStartPdf = null;
+                        savedImageData = null;
+                    }
                 }
             }
             
@@ -1290,10 +1440,8 @@
             if (annotations.length === 0) return;
             const lastAnno = annotations.pop();
             updateUndoBtn();
-            
-            loadingOverlay.style.display = 'flex';
+            // 不顯示 loading overlay，新 canvas 在背景渲染完才替換，無閃爍
             await renderSinglePage(lastAnno.pageIndex + 1);
-            loadingOverlay.style.display = 'none';
         });
 
         function updateUndoBtn() {
@@ -1345,6 +1493,17 @@
                             end: { x: a.path[i+1].pdfX, y: a.path[i+1].pdfY },
                             thickness: a.lineWidth, color: rgb(...rgbColor),
                         });
+                    }
+                } else if (a.type === 'rect') {
+                    const rgbColor = hexToRgb(a.color);
+                    const rx = Math.min(a.pdfX1, a.pdfX2);
+                    const ry = Math.min(a.pdfY1, a.pdfY2);
+                    const rw = Math.abs(a.pdfX2 - a.pdfX1);
+                    const rh = Math.abs(a.pdfY2 - a.pdfY1);
+                    if (a.penMode === 'highlight') {
+                        page.drawRectangle({ x: rx, y: ry, width: rw, height: rh, color: rgb(...rgbColor), opacity: 0.38 });
+                    } else {
+                        page.drawRectangle({ x: rx, y: ry, width: rw, height: rh, borderColor: rgb(...rgbColor), borderWidth: 2 });
                     }
                 }
             }
@@ -1414,6 +1573,242 @@
             a.href = url; a.download = filename; document.body.appendChild(a); a.click();
             setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 0);
         }
+
+        // ============================================================
+        // 功能 1：多組印章預設
+        // ============================================================
+        function saveStampPreset() {
+            const presets = JSON.parse(localStorage.getItem('stamp_presets') || '[]');
+            const preset = {
+                label: stampNameInput.value.trim() || '印章',
+                name: stampNameInput.value.trim(),
+                date: document.getElementById('stamp-date').value,
+                color: document.getElementById('stamp-color').value,
+                size: stampSizeInput.value,
+                rotation: stampRotationInput.value,
+            };
+            presets.push(preset);
+            localStorage.setItem('stamp_presets', JSON.stringify(presets));
+            renderStampPresets();
+        }
+
+        function applyStampPreset(idx) {
+            const presets = JSON.parse(localStorage.getItem('stamp_presets') || '[]');
+            const p = presets[idx];
+            if (!p) return;
+            stampNameInput.value = p.name;
+            document.getElementById('stamp-date').value = p.date;
+            document.getElementById('stamp-color').value = p.color;
+            stampSizeInput.value = p.size;
+            stampRotationInput.value = p.rotation;
+            document.getElementById('stamp-size-label').textContent = p.size;
+            previewCanvas.style.width = `${p.size}px`;
+            previewCanvas.style.height = `${p.size}px`;
+            generateStampImage();
+        }
+
+        function deleteStampPreset(idx, e) {
+            e.stopPropagation();
+            const presets = JSON.parse(localStorage.getItem('stamp_presets') || '[]');
+            presets.splice(idx, 1);
+            localStorage.setItem('stamp_presets', JSON.stringify(presets));
+            renderStampPresets();
+        }
+
+        function renderStampPresets() {
+            const list = document.getElementById('stamp-presets-list');
+            const presets = JSON.parse(localStorage.getItem('stamp_presets') || '[]');
+            if (presets.length === 0) {
+                list.innerHTML = '<span class="text-xs text-gray-400 italic">（按「儲存目前」加入預設）</span>';
+                return;
+            }
+            list.innerHTML = presets.map((p, i) => `
+                <div class="flex items-center gap-0.5 bg-white border border-blue-200 rounded text-xs overflow-hidden shadow-sm">
+                    <button onclick="applyStampPreset(${i})"
+                        class="px-2 py-1 text-blue-700 font-bold hover:bg-blue-50 transition">${p.label}</button>
+                    <button onclick="deleteStampPreset(${i}, event)"
+                        class="px-1 py-1 text-gray-400 hover:text-red-500 hover:bg-red-50 transition">✕</button>
+                </div>`).join('');
+        }
+        renderStampPresets();
+
+        // ============================================================
+        // 功能 3：常用文字範本（預設 + 自訂可儲存）
+        // ============================================================
+        const DEFAULT_TEXT_TEMPLATES = ['請確認', '已核對', '有誤', '待補件', 'OK ✓'];
+
+        function saveTextTemplate() {
+            const val = textInput.value.trim();
+            if (!val) return;
+            const customs = JSON.parse(localStorage.getItem('text_templates') || '[]');
+            if (!customs.includes(val)) {
+                customs.push(val);
+                localStorage.setItem('text_templates', JSON.stringify(customs));
+            }
+            renderTextTemplates();
+        }
+
+        function deleteTextTemplate(idx, e) {
+            e.stopPropagation();
+            const customs = JSON.parse(localStorage.getItem('text_templates') || '[]');
+            customs.splice(idx, 1);
+            localStorage.setItem('text_templates', JSON.stringify(customs));
+            renderTextTemplates();
+        }
+
+        function applyTextTemplate(val) {
+            textInput.value = val;
+            localStorage.setItem('t_content', val);
+            updateTextPreview();
+        }
+
+        function renderTextTemplates() {
+            const list = document.getElementById('text-templates-list');
+            const customs = JSON.parse(localStorage.getItem('text_templates') || '[]');
+            const defaultBtns = DEFAULT_TEXT_TEMPLATES.map(t => `
+                <button onclick="applyTextTemplate('${t}')"
+                    class="px-2 py-1 text-xs bg-white border border-yellow-300 text-yellow-800 rounded hover:bg-yellow-100 transition font-medium">${t}</button>`).join('');
+            const customBtns = customs.map((t, i) => `
+                <div class="flex items-center gap-0.5 bg-white border border-green-200 rounded text-xs overflow-hidden">
+                    <button onclick="applyTextTemplate('${t.replace(/'/g, "\\'")}')"
+                        class="px-2 py-1 text-green-700 font-bold hover:bg-green-50 transition max-w-[80px] truncate">${t}</button>
+                    <button onclick="deleteTextTemplate(${i}, event)"
+                        class="px-1 py-1 text-gray-400 hover:text-red-500 hover:bg-red-50 transition">✕</button>
+                </div>`).join('');
+            list.innerHTML = defaultBtns + customBtns;
+        }
+        renderTextTemplates();
+
+        // ============================================================
+        // 功能 2：畫筆子模式切換
+        // ============================================================
+        function setPenMode(mode) {
+            currentPenMode = mode;
+            const freeBtn = document.getElementById('pen-mode-freehand');
+            const hiBtn   = document.getElementById('pen-mode-highlight');
+            const borBtn  = document.getElementById('pen-mode-border');
+            const freeOpts = document.getElementById('pen-freehand-opts');
+            const rectOpts = document.getElementById('pen-rect-opts');
+            const hint     = document.getElementById('pen-rect-hint');
+
+            [freeBtn, hiBtn, borBtn].forEach(b => {
+                b.className = 'flex-1 py-2 px-1 text-xs font-bold rounded border-2 border-gray-200 bg-white text-gray-600';
+            });
+
+            if (mode === 'freehand') {
+                freeBtn.className = 'flex-1 py-2 px-1 text-xs font-bold rounded border-2 border-blue-400 bg-blue-50 text-blue-700';
+                freeOpts.classList.remove('hidden');
+                rectOpts.classList.add('hidden');
+            } else if (mode === 'highlight') {
+                hiBtn.className = 'flex-1 py-2 px-1 text-xs font-bold rounded border-2 border-yellow-400 bg-yellow-50 text-yellow-700';
+                freeOpts.classList.add('hidden');
+                rectOpts.classList.remove('hidden');
+                document.getElementById('rect-color').value = '#facc15';
+                hint.textContent = '🟡 螢光筆：拖曳畫半透明矩形';
+            } else {
+                borBtn.className = 'flex-1 py-2 px-1 text-xs font-bold rounded border-2 border-red-400 bg-red-50 text-red-700';
+                freeOpts.classList.add('hidden');
+                rectOpts.classList.remove('hidden');
+                document.getElementById('rect-color').value = '#ef4444';
+                hint.textContent = '🔲 邊框：拖曳畫實線外框矩形';
+            }
+        }
+
+        // ============================================================
+        // 功能 4：頁碼顯示
+        // ============================================================
+        function updatePageIndicator() {
+            if (!pdfInstance) return;
+            const indicator = document.getElementById('page-indicator');
+            const canvases = Array.from(document.querySelectorAll('#pdf-container canvas'));
+            if (canvases.length === 0) return;
+            const containerRect = pdfContainer.getBoundingClientRect();
+            let bestPage = 1, bestOverlap = -1;
+            canvases.forEach(c => {
+                const r = c.getBoundingClientRect();
+                const overlapTop = Math.max(r.top, containerRect.top);
+                const overlapBot = Math.min(r.bottom, containerRect.bottom);
+                const overlap = overlapBot - overlapTop;
+                if (overlap > bestOverlap) {
+                    bestOverlap = overlap;
+                    bestPage = parseInt(c.dataset.pageIndex) + 1;
+                }
+            });
+            indicator.textContent = `${bestPage} / ${pdfInstance.numPages}`;
+        }
+        pdfContainer.addEventListener('scroll', updatePageIndicator);
+
+        // ============================================================
+        // 功能 6：批次處理（隊列累加模式）
+        // ============================================================
+        function toggleBatchMode() {
+            isBatchMode = !isBatchMode;
+            const btn = document.getElementById('batch-toggle-btn');
+            if (isBatchMode) {
+                btn.className = 'bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded transition border border-blue-700 text-sm font-bold shadow-sm flex items-center gap-1';
+                btn.title = '批次模式已開啟：每次拖入的 PDF 都會加入隊列';
+            } else {
+                btn.className = 'bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-2 rounded transition border border-gray-300 text-sm font-bold shadow-sm flex items-center gap-1';
+                btn.title = '批次處理模式：開啟後每次拖入都加入隊列';
+                batchStop();
+            }
+        }
+
+        // 追加檔案到隊列（批次模式核心）
+        async function addToBatch(files) {
+            const wasEmpty = batchFiles.length === 0;
+            batchFiles.push(...files);
+            document.getElementById('batch-bar').classList.remove('hidden');
+            updateBatchUI();
+
+            if (wasEmpty) {
+                // 第一批：立刻開始處理第一份
+                batchIndex = 0;
+                await loadBatchFile();
+            }
+            // 若隊列已有內容，只追加，不切換當前頁
+        }
+
+        async function loadBatchFile() {
+            if (batchIndex >= batchFiles.length) {
+                document.getElementById('batch-progress-text').textContent = '全部完成 ✓';
+                document.getElementById('batch-file-name').textContent = '可繼續拖入新檔案';
+                document.getElementById('batch-next-btn').disabled = true;
+                return;
+            }
+            updateBatchUI(); // 先更新進度顯示，再開始載入
+            await processFile(batchFiles[batchIndex]);
+        }
+
+        function updateBatchUI() {
+            const total = batchFiles.length;
+            const current = Math.min(batchIndex + 1, total);
+            document.getElementById('batch-progress-text').textContent = `第 ${current} / ${total} 份`;
+            const currentFile = batchFiles[batchIndex];
+            document.getElementById('batch-file-name').textContent = currentFile ? currentFile.name : '';
+            document.getElementById('batch-next-btn').disabled = (batchIndex >= total - 1);
+        }
+
+        async function batchNext() {
+            batchIndex++;
+            await loadBatchFile();
+        }
+
+        function batchStop() {
+            batchFiles = [];
+            batchIndex = 0;
+            document.getElementById('batch-bar').classList.add('hidden');
+        }
+
+        // ============================================================
+        // 手機瀏覽器 vh 修復（補充 JS 動態計算）
+        // ============================================================
+        function setVh() {
+            document.documentElement.style.setProperty('--real-vh', window.innerHeight * 0.01 + 'px');
+            document.body.style.height = window.innerHeight + 'px';
+        }
+        setVh();
+        window.addEventListener('resize', setVh);
     </script>
 </body>
 </html>
