@@ -1,0 +1,15 @@
+# 依賴與建置產物
+node_modules/
+package.json
+package-lock.json
+
+# Capacitor / Android
+android/
+www/
+assets/
+capacitor.config.json
+
+# 暫存檔
+_check*.js
+_tmp*.js
+*.log

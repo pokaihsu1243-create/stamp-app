@@ -285,6 +285,10 @@
                                 <label class="block text-sm font-semibold text-gray-700 mb-1">外框粗細：<span id="rect-border-label" class="text-blue-600">8</span></label>
                                 <input type="range" id="rect-border-width" min="2" max="20" value="8" class="w-full accent-blue-600">
                             </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-1">長寬比例：<span id="rect-ratio-label" class="text-blue-600">2.0 : 1</span></label>
+                                <input type="range" id="rect-aspect-ratio" min="10" max="40" value="20" step="1" class="w-full accent-blue-600">
+                            </div>
                         </div>
                     </div>
 
@@ -301,6 +305,11 @@
                         <div>
                             <label class="block text-sm font-semibold text-gray-700 mb-1">註解文字：</label>
                             <textarea id="text-input" rows="2" class="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold">請確認此處有誤</textarea>
+                            <!-- 常用工程符號快速插入 -->
+                            <div class="mt-1.5">
+                                <label class="block text-xs font-semibold text-gray-500 mb-1">常用工程符號（點擊插入）：</label>
+                                <div id="eng-symbol-bar" class="flex flex-wrap gap-1"></div>
+                            </div>
                         </div>
                         <div class="flex gap-4">
                             <div class="flex-1">
@@ -333,8 +342,8 @@
                                     class="flex-1 py-2 px-1 text-xs font-bold rounded border-2 border-blue-400 bg-blue-50 text-blue-700">🖍️ 畫筆</button>
                                 <button id="pen-mode-highlight" onclick="setPenMode('highlight')"
                                     class="flex-1 py-2 px-1 text-xs font-bold rounded border-2 border-gray-200 bg-white text-gray-600">🟡 螢光筆</button>
-                                <button id="pen-mode-border" onclick="setPenMode('border')"
-                                    class="flex-1 py-2 px-1 text-xs font-bold rounded border-2 border-gray-200 bg-white text-gray-600">🔲 邊框</button>
+                                <button id="pen-mode-shape" onclick="setPenMode('shape')"
+                                    class="flex-1 py-2 px-1 text-xs font-bold rounded border-2 border-gray-200 bg-white text-gray-600">📐 符號</button>
                             </div>
                         </div>
 
@@ -360,6 +369,36 @@
                             </div>
                             <p id="pen-rect-hint" class="text-xs text-gray-500 bg-gray-50 p-2 rounded border border-gray-100">
                                 🟡 螢光筆：拖曳畫半透明矩形</p>
+                        </div>
+
+                        <!-- 工程符號選項 -->
+                        <div id="pen-shape-opts" class="hidden space-y-3">
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-1.5">選擇符號：</label>
+                                <div class="grid grid-cols-3 gap-1.5" id="shape-grid">
+                                    <button type="button" data-shape="line"     onclick="setShape('line')"     class="shape-btn py-2 text-xs font-bold rounded border-2 border-gray-200 bg-white text-gray-600">／ 直線</button>
+                                    <button type="button" data-shape="arrow"    onclick="setShape('arrow')"    class="shape-btn py-2 text-xs font-bold rounded border-2 border-gray-200 bg-white text-gray-600">→ 箭頭</button>
+                                    <button type="button" data-shape="dim"      onclick="setShape('dim')"      class="shape-btn py-2 text-xs font-bold rounded border-2 border-gray-200 bg-white text-gray-600">↔ 尺寸線</button>
+                                    <button type="button" data-shape="rect"     onclick="setShape('rect')"     class="shape-btn py-2 text-xs font-bold rounded border-2 border-gray-200 bg-white text-gray-600">▭ 長方框</button>
+                                    <button type="button" data-shape="square"   onclick="setShape('square')"   class="shape-btn py-2 text-xs font-bold rounded border-2 border-gray-200 bg-white text-gray-600">▢ 正方框</button>
+                                    <button type="button" data-shape="circle"   onclick="setShape('circle')"   class="shape-btn py-2 text-xs font-bold rounded border-2 border-gray-200 bg-white text-gray-600">◯ 圓形</button>
+                                    <button type="button" data-shape="ellipse"  onclick="setShape('ellipse')"  class="shape-btn py-2 text-xs font-bold rounded border-2 border-gray-200 bg-white text-gray-600">⬭ 橢圓</button>
+                                    <button type="button" data-shape="diameter" onclick="setShape('diameter')" class="shape-btn py-2 text-xs font-bold rounded border-2 border-gray-200 bg-white text-gray-600">⌀ 直徑</button>
+                                    <button type="button" data-shape="radius"   onclick="setShape('radius')"   class="shape-btn py-2 text-xs font-bold rounded border-2 border-gray-200 bg-white text-gray-600">R 半徑</button>
+                                </div>
+                            </div>
+                            <div class="flex gap-4">
+                                <div class="flex-1">
+                                    <label class="block text-sm font-semibold text-gray-700 mb-1">顏色：</label>
+                                    <input type="color" id="shape-color" value="#ef4444" class="w-full h-10 rounded cursor-pointer border-0 p-0">
+                                </div>
+                                <div class="flex-1">
+                                    <label class="block text-sm font-semibold text-gray-700 mb-1">線粗：<span id="shape-size-label" class="text-blue-600">2</span></label>
+                                    <input type="range" id="shape-size" min="1" max="12" value="2" class="w-full accent-blue-600">
+                                </div>
+                            </div>
+                            <p class="text-xs text-gray-500 bg-gray-50 p-2 rounded border border-gray-100">
+                                📐 在 PDF 上拖曳，起點→終點決定符號的大小與方向，放開即固定。</p>
                         </div>
                     </div>
 
@@ -451,7 +490,8 @@
         // 畫筆暫存狀態
         let isDrawing = false;
         let currentPath = [];
-        let currentPenMode = 'freehand'; // 'freehand' | 'highlight' | 'border'
+        let currentPenMode = 'freehand'; // 'freehand' | 'highlight' | 'shape'
+        let currentShape = 'arrow';      // 工程符號目前選擇
         let rectStartPdf = null;
         let savedImageData = null;
 
@@ -589,7 +629,10 @@
             textSizeInput.value = localStorage.getItem('t_size') || '24';
             penColorInput.value = localStorage.getItem('p_color') || '#ef4444';
             penSizeInput.value = localStorage.getItem('p_size') || '3';
-            
+            document.getElementById('shape-color').value = localStorage.getItem('shp_color') || '#ef4444';
+            document.getElementById('shape-size').value  = localStorage.getItem('shp_size')  || '2';
+            document.getElementById('shape-size-label').textContent = document.getElementById('shape-size').value;
+
             const s = stampSizeInput.value;
             previewCanvas.style.width = `${s}px`;
             previewCanvas.style.height = `${s}px`;
@@ -650,9 +693,8 @@
         // ==== 數值連動與圖形更新監聽 ====
         stampSizeInput.addEventListener('input', (e) => {
             document.getElementById('stamp-size-label').textContent = e.target.value;
-            previewCanvas.style.width = `${e.target.value}px`;
-            previewCanvas.style.height = `${e.target.value}px`;
             saveToStorage('s_size', e.target.value);
+            updateStampPreviewSize(); // 含長寬比等比縮放
         });
         stampRotationInput.addEventListener('change', (e) => {
             localStorage.setItem('s_rotation', e.target.value);
@@ -697,6 +739,41 @@
             saveToStorage('t_content', e.target.value);
             updateTextPreview();
         });
+
+        // ==== 常用工程符號快速插入 ====
+        const ENG_SYMBOLS = [
+            { s: '⌀', t: '直徑' },   { s: 'R',  t: '半徑' },   { s: '±', t: '公差' },
+            { s: '°', t: '度' },     { s: '∠', t: '角度' },    { s: '□', t: '方' },
+            { s: '△', t: '基準/三角' }, { s: '▽', t: '表面' },  { s: '℄', t: '中心線' },
+            { s: '×', t: '乘/孔數' }, { s: '≈', t: '約' },     { s: '✓', t: '確認' },
+            { s: '→', t: '右箭頭' }, { s: '←', t: '左箭頭' },  { s: '÷', t: '除' },
+        ];
+        (function buildSymbolBar() {
+            const bar = document.getElementById('eng-symbol-bar');
+            if (!bar) return;
+            ENG_SYMBOLS.forEach(({ s, t }) => {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.title = t;
+                b.textContent = s;
+                b.className = 'w-8 h-8 flex items-center justify-center text-base font-bold rounded border border-gray-300 bg-white text-gray-700 hover:bg-blue-50 hover:border-blue-400 transition';
+                b.addEventListener('click', () => insertTextSymbol(s));
+                bar.appendChild(b);
+            });
+        })();
+
+        function insertTextSymbol(sym) {
+            const start = textInput.selectionStart ?? textInput.value.length;
+            const end   = textInput.selectionEnd ?? textInput.value.length;
+            const v = textInput.value;
+            textInput.value = v.slice(0, start) + sym + v.slice(end);
+            // 游標移到插入符號之後
+            const pos = start + sym.length;
+            textInput.focus();
+            textInput.setSelectionRange(pos, pos);
+            saveToStorage('t_content', textInput.value);
+            updateTextPreview();
+        }
         textColorInput.addEventListener('input', (e) => {
             saveToStorage('t_color', e.target.value);
             updateTextPreview();
@@ -706,6 +783,13 @@
         penSizeInput.addEventListener('input', (e) => {
             document.getElementById('pen-size-label').textContent = e.target.value;
             saveToStorage('p_size', e.target.value);
+        });
+
+        // 工程符號：顏色 / 線粗 持久化
+        document.getElementById('shape-color').addEventListener('input', (e) => saveToStorage('shp_color', e.target.value));
+        document.getElementById('shape-size').addEventListener('input', (e) => {
+            document.getElementById('shape-size-label').textContent = e.target.value;
+            saveToStorage('shp_size', e.target.value);
         });
 
         saveKeyBtn.addEventListener('click', async () => {
@@ -891,6 +975,15 @@
 
         // ==== 印章樣式狀態 ====
         let currentStampStyle = localStorage.getItem('stamp_style') || 'circle';
+        let stampAspectRatio = 1.0; // 方章長寬比，其他樣式固定 1.0
+
+        // 更新預覽 canvas 的 CSS 顯示尺寸（含長寬比）
+        function updateStampPreviewSize() {
+            const s = parseInt(stampSizeInput.value) || 80;
+            const c = document.getElementById('stamp-template');
+            c.style.width  = `${Math.round(s * stampAspectRatio)}px`;
+            c.style.height = `${s}px`;
+        }
 
         // ==== 產生影像（依樣式分流） ====
         function generateStampImage() {
@@ -899,21 +992,41 @@
             else generateCircleStampImage();
         }
 
-        // --- 樣式一：原有圓章（不改動原邏輯）---
+        // 輔助：計算文字方框四個角落，確保全部在圓內（安全半徑 safeR）
+        // cy = 文字中心 y，fontSize 用來估算文字高度
+        function fitTextInCircle(ctx, text, cy, fontFamily, safeR) {
+            let fs = 72;
+            while (fs > 8) {
+                ctx.font = `bold ${fs}px ${fontFamily}`;
+                const hw = ctx.measureText(text).width / 2; // 半寬
+                const hh = fs * 0.52; // 半高（中文字約佔 em 的 90%，取保守值）
+                // 四個角落中最遠的點：水平最遠 × 垂直最遠
+                const dist = Math.sqrt(hw * hw + Math.pow(Math.abs(cy - 100) + hh, 2));
+                if (dist <= safeR) break;
+                fs--;
+            }
+            return fs;
+        }
+
+        // 輔助：日期字串產生（補零）
+        function formatDate(dateEl) {
+            if (dateEl && dateEl.value) {
+                const d = new Date(dateEl.value + 'T00:00:00');
+                return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
+            }
+            const n = new Date();
+            return `${n.getFullYear()}.${String(n.getMonth()+1).padStart(2,'0')}.${String(n.getDate()).padStart(2,'0')}`;
+        }
+
+        // --- 樣式一：原有圓章（日期自動撐滿 + 補零格式）---
         function generateCircleStampImage() {
+            stampAspectRatio = 1.0;
             const canvas = document.getElementById('stamp-template');
             canvas.width = 200; canvas.height = 200;
             canvas.style.borderRadius = '50%';
             const ctx = canvas.getContext('2d');
-            const stampDateEl = document.getElementById('stamp-date');
-            let dateStr;
-            if (stampDateEl && stampDateEl.value) {
-                const d = new Date(stampDateEl.value + 'T00:00:00');
-                dateStr = `${d.getFullYear()}. ${d.getMonth()+1}. ${d.getDate()}`;
-            } else {
-                const now = new Date();
-                dateStr = `${now.getFullYear()}. ${now.getMonth()+1}. ${now.getDate()}`;
-            }
+
+            const dateStr = formatDate(document.getElementById('stamp-date'));
             const color = document.getElementById('stamp-color').value || '#1d4ed8';
             const name = stampNameInput.value.trim() || '印章';
             let topText = '', bottomText = '';
@@ -922,25 +1035,39 @@
             else if (name.length === 3) { topText = name[0]; bottomText = name.substring(1); }
             else if (name.length === 4) { topText = name.substring(0, 2); bottomText = name.substring(2); }
             else { const mid = Math.floor(name.length / 2); topText = name.substring(0, mid); bottomText = name.substring(mid); }
+
             ctx.clearRect(0, 0, 200, 200);
             ctx.beginPath(); ctx.arc(100, 100, 95, 0, Math.PI * 2);
             ctx.strokeStyle = color; ctx.lineWidth = 6; ctx.stroke();
+            const lineY1 = 70, lineY2 = 130;
             const dx = Math.sqrt(95*95 - 30*30);
             ctx.beginPath();
-            ctx.moveTo(100-dx, 70); ctx.lineTo(100+dx, 70);
-            ctx.moveTo(100-dx, 130); ctx.lineTo(100+dx, 130);
+            ctx.moveTo(100-dx, lineY1); ctx.lineTo(100+dx, lineY1);
+            ctx.moveTo(100-dx, lineY2); ctx.lineTo(100+dx, lineY2);
             ctx.lineWidth = 4; ctx.stroke();
+
             ctx.fillStyle = color; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+
+            // 上區姓名（不變）
             ctx.font = `bold ${topText.length >= 3 ? 28 : 44}px "Noto Serif TC", "serif"`;
             if (topText) ctx.fillText(topText, 100, 40, 140);
-            ctx.font = 'bold 24px Arial'; ctx.fillText(dateStr, 100, 102, 160);
+
+            // 中區日期：角落檢驗法，自動撐滿不超出
+            const dfs = fitTextInCircle(ctx, dateStr, 100, 'Arial, sans-serif', 90);
+            ctx.font = `bold ${dfs}px Arial, sans-serif`;
+            ctx.fillText(dateStr, 100, 100);
+
+            // 下區姓名（不變）
             ctx.font = `bold ${bottomText.length >= 3 ? 28 : 44}px "Noto Serif TC", "serif"`;
             if (bottomText) ctx.fillText(bottomText, 100, 165, 140);
+
             stampImgBase64 = canvas.toDataURL('image/png');
+            updateStampPreviewSize();
         }
 
-        // --- 樣式二：部門圓章 ---
+        // --- 樣式二：部門圓章（與圓章同邏輯：fitTextInCircle + actualBoundingBox 精確置中）---
         function generateDeptStampImage() {
+            stampAspectRatio = 1.0;
             const canvas = document.getElementById('stamp-template');
             canvas.width = 200; canvas.height = 200;
             canvas.style.borderRadius = '50%';
@@ -948,75 +1075,158 @@
             const color  = document.getElementById('stamp-color').value || '#cc0000';
             const dept   = document.getElementById('dept-name').value.trim()   || '研發部';
             const person = document.getElementById('dept-person').value.trim() || '姓名';
-            const dateEl = document.getElementById('dept-date');
-            let dateStr;
-            if (dateEl && dateEl.value) {
-                const d = new Date(dateEl.value + 'T00:00:00');
-                dateStr = `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
-            } else {
-                const n = new Date();
-                dateStr = `${n.getFullYear()}.${String(n.getMonth()+1).padStart(2,'0')}.${String(n.getDate()).padStart(2,'0')}`;
+            const dateStr = formatDate(document.getElementById('dept-date'));
+
+            // 與圓章相同的常數
+            const CX = 100, CY = 100;
+            const R = 95, BORDER_W = 6, LINE_W = 4;
+            const SAFE_R = 90; // 圓內文字安全半徑
+            const DIV_Y1 = 70, DIV_Y2 = 130;
+
+            // ── 三區「真實可用垂直空間」邊界 ──
+            // 上區：圓內緣頂 → 上分隔線上緣 ；下區：下分隔線下緣 → 圓內緣底
+            const TOP_T = CY - SAFE_R;            // = 10  圓內緣頂
+            const TOP_B = DIV_Y1 - LINE_W / 2;    // = 68  上分隔線上緣
+            const MID_T = DIV_Y1 + LINE_W / 2;    // = 72
+            const MID_B = DIV_Y2 - LINE_W / 2;    // = 128
+            const BOT_T = DIV_Y2 + LINE_W / 2;    // = 132 下分隔線下緣
+            const BOT_B = CY + SAFE_R;            // = 190 圓內緣底
+
+            // 各區「上下空間置中點」
+            const TOP_CY = (TOP_T + TOP_B) / 2;   // = 39
+            const MID_CY = (MID_T + MID_B) / 2;   // = 100
+            const BOT_CY = (BOT_T + BOT_B) / 2;   // = 161
+
+            // ── 求最大字體：文字置中於 cy，同時滿足 ──
+            //   (1) 矩形高度：不超出分隔線/圓內緣 [regTop, regBot]
+            //   (2) 圓形邊界：最遠角不超出 SAFE_R
+            function fitFs(text, cy, regTop, regBot, fontFamily) {
+                for (let fs = 72; fs >= 6; fs--) {
+                    ctx.font = `bold ${fs}px ${fontFamily}`;
+                    const m  = ctx.measureText(text);
+                    const hw = m.width / 2;
+                    const asc  = m.actualBoundingBoxAscent  ?? fs * 0.50;
+                    const desc = m.actualBoundingBoxDescent ?? fs * 0.22;
+                    const halfH = (asc + desc) / 2;      // 置中後視覺半高
+                    const tTop = cy - halfH, tBot = cy + halfH;
+                    // (1) 高度邊界
+                    if (tTop < regTop || tBot > regBot) continue;
+                    // (2) 圓形最遠角（上方取頂邊、下方取底邊）
+                    const critY = cy <= CY ? tTop : tBot;
+                    const dist  = Math.sqrt(hw * hw + (critY - CY) ** 2);
+                    if (dist <= SAFE_R) return fs;
+                }
+                return 6;
             }
+
+            // ── 精確垂直置中：讓視覺 bbox 中心 = targetCY ────────────────
+            // drawY = targetCY + (asc - desc) / 2
+            function drawCentered(text, targetCY, ls) {
+                const m    = ctx.measureText(text);
+                const asc  = m.actualBoundingBoxAscent  ?? 0;
+                const desc = m.actualBoundingBoxDescent ?? 0;
+                const drawY = targetCY + (asc - desc) / 2;
+                if (ls <= 0 || [...text].length <= 1) {
+                    ctx.fillText(text, CX, drawY);
+                    return;
+                }
+                const chars = [...text];
+                const ws    = chars.map(c => ctx.measureText(c).width);
+                const totalW = ws.reduce((a, b) => a + b, 0) + ls * (chars.length - 1);
+                ctx.save(); ctx.textAlign = 'left';
+                let x = CX - totalW / 2;
+                chars.forEach((c, i) => {
+                    ctx.fillText(c, x, drawY);
+                    x += ws[i] + (i < chars.length - 1 ? ls : 0);
+                });
+                ctx.restore();
+            }
+
+            // ── 計算小幅 letterSpacing（填滿至目標寬度，上限 fs×0.10）────
+            function calcLS(text, fs, cy, targetRatio) {
+                const m     = ctx.measureText(text);
+                const w     = m.width;
+                const chord = Math.sqrt(Math.max(0, SAFE_R * SAFE_R - (cy - CY) ** 2)) * 2 - 8;
+                const gaps  = [...text].length - 1;
+                if (gaps <= 0 || w >= chord * targetRatio) return 0;
+                return Math.min((chord * targetRatio - w) / gaps, fs * 0.10);
+            }
+
+            // ── 繪製外圓框 ──────────────────────────────────────────────
             ctx.clearRect(0, 0, 200, 200);
-            // 外圓
-            ctx.beginPath(); ctx.arc(100, 100, 95, 0, Math.PI*2);
-            ctx.strokeStyle = color; ctx.lineWidth = 6; ctx.stroke();
-            // 兩條分隔線（與圓相交）
-            const y1 = 68, y2 = 132;
-            const dx1 = Math.sqrt(Math.max(0, 95*95-(y1-100)*(y1-100)));
-            const dx2 = Math.sqrt(Math.max(0, 95*95-(y2-100)*(y2-100)));
             ctx.beginPath();
-            ctx.moveTo(100-dx1, y1); ctx.lineTo(100+dx1, y1);
-            ctx.moveTo(100-dx2, y2); ctx.lineTo(100+dx2, y2);
-            ctx.strokeStyle = color; ctx.lineWidth = 4; ctx.stroke();
+            ctx.arc(CX, CY, R, 0, Math.PI * 2);
+            ctx.strokeStyle = color; ctx.lineWidth = BORDER_W; ctx.stroke();
+
+            // ── 繪製分隔線 ───────────────────────────────────────────────
+            const dx1 = Math.sqrt(Math.max(0, R * R - (DIV_Y1 - CY) ** 2));
+            const dx2 = Math.sqrt(Math.max(0, R * R - (DIV_Y2 - CY) ** 2));
+            ctx.beginPath();
+            ctx.moveTo(CX - dx1, DIV_Y1); ctx.lineTo(CX + dx1, DIV_Y1);
+            ctx.moveTo(CX - dx2, DIV_Y2); ctx.lineTo(CX + dx2, DIV_Y2);
+            ctx.strokeStyle = color; ctx.lineWidth = LINE_W; ctx.stroke();
+
             ctx.fillStyle = color; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            // 上區：部門名稱，動態縮放撐滿
-            const maxW1 = dx1 * 1.75;
-            let fs1 = 52;
-            ctx.font = `bold ${fs1}px "Noto Serif TC", serif`;
-            while (ctx.measureText(dept).width > maxW1 && fs1 > 12) { fs1 -= 2; ctx.font = `bold ${fs1}px "Noto Serif TC", serif`; }
-            ctx.fillText(dept, 100, y1 / 2 + 4);
-            // 中區：日期
-            ctx.font = 'bold 21px Arial, sans-serif';
-            ctx.fillText(dateStr, 100, 100);
-            // 下區：姓名，動態縮放撐滿
-            const maxW2 = dx2 * 1.75;
-            let fs2 = 52;
-            ctx.font = `bold ${fs2}px "Noto Serif TC", serif`;
-            while (ctx.measureText(person).width > maxW2 && fs2 > 12) { fs2 -= 2; ctx.font = `bold ${fs2}px "Noto Serif TC", serif`; }
-            ctx.fillText(person, 100, y2 + (200-y2)/2 - 2);
+
+            // ── 上區：部門名稱 ──────────────────────────────────────────
+            const topFs = fitFs(dept, TOP_CY, TOP_T, TOP_B, '"Noto Serif TC", serif');
+            ctx.font = `bold ${topFs}px "Noto Serif TC", serif`;
+            const topLS = calcLS(dept, topFs, TOP_CY, 0.72);
+            drawCentered(dept, TOP_CY, topLS);
+
+            // ── 中區：日期 ──────────────────────────────────────────────
+            const midFs = fitFs(dateStr, MID_CY, MID_T, MID_B, 'Arial, sans-serif');
+            ctx.font = `bold ${midFs}px Arial, sans-serif`;
+            drawCentered(dateStr, MID_CY, 0);
+
+            // ── 下區：姓名 ──────────────────────────────────────────────
+            const botFs = fitFs(person, BOT_CY, BOT_T, BOT_B, '"Noto Serif TC", serif');
+            ctx.font = `bold ${botFs}px "Noto Serif TC", serif`;
+            const botLS = calcLS(person, botFs, BOT_CY, 0.75);
+            drawCentered(person, BOT_CY, botLS);
+
             stampImgBase64 = canvas.toDataURL('image/png');
+            updateStampPreviewSize();
         }
 
-        // --- 樣式三：方形名章 ---
+        // --- 樣式三：方形名章（長寬比可調，等比縮放）---
         function generateRectStampImage() {
             const name   = document.getElementById('rect-stamp-name').value.trim() || '姓名';
             const color  = document.getElementById('stamp-color').value || '#cc0000';
             const border = parseInt(document.getElementById('rect-border-width').value) || 8;
-            // canvas 比例：橫向，寬約為高的 2.2 倍（名字越多越寬）
-            const CH = 120;
-            const CW = Math.max(CH, Math.min(name.length * 80 + border * 2, 320));
+            const ratio  = parseInt(document.getElementById('rect-aspect-ratio').value) / 10; // e.g. 2.0
+            stampAspectRatio = ratio;
+
+            // 固定高度為 200px，寬依比例
+            const CH = 200;
+            const CW = Math.round(CH * ratio);
             const canvas = document.getElementById('stamp-template');
             canvas.width = CW; canvas.height = CH;
             canvas.style.borderRadius = '4px';
             const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, CW, CH);
-            // 外框
+
+            // 外框（四邊等粗）
+            ctx.strokeStyle = color;
+            ctx.lineWidth = border;
+            ctx.lineJoin = 'miter';
             const half = border / 2;
-            ctx.strokeStyle = color; ctx.lineWidth = border;
-            ctx.strokeRect(half, half, CW-border, CH-border);
-            // 姓名動態撐滿
-            const innerW = CW - border*2 - 10;
-            const innerH = CH - border*2 - 6;
-            let fs = 90;
+            ctx.strokeRect(half, half, CW - border, CH - border);
+
+            // 姓名自動填滿內部，不超出
+            const innerW = CW - border * 2 - 12;
+            const innerH = CH - border * 2 - 12;
+            let fs = Math.min(innerW, innerH);
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
             ctx.font = `bold ${fs}px "Noto Serif TC", serif`;
-            while ((ctx.measureText(name).width > innerW || fs > innerH) && fs > 10) {
-                fs -= 2; ctx.font = `bold ${fs}px "Noto Serif TC", serif`;
+            while ((ctx.measureText(name).width > innerW || fs > innerH) && fs > 8) {
+                fs--; ctx.font = `bold ${fs}px "Noto Serif TC", serif`;
             }
             ctx.fillStyle = color;
-            ctx.fillText(name, CW/2, CH/2);
+            ctx.fillText(name, CW / 2, CH / 2);
+
             stampImgBase64 = canvas.toDataURL('image/png');
+            updateStampPreviewSize();
         }
 
         function updateTextPreview() {
@@ -1227,6 +1437,10 @@
                         context.strokeRect(rx, ry, rw, rh);
                     }
                     context.restore();
+                } else if (a.type === 'shape') {
+                    const [sx, sy] = viewport.convertToViewportPoint(a.pdfX1, a.pdfY1);
+                    const [ex, ey] = viewport.convertToViewportPoint(a.pdfX2, a.pdfY2);
+                    drawEngShape(context, a.shape, sx, sy, ex, ey, a.color, (a.lineWidth || 2) * RENDER_SCALE);
                 }
             }
 
@@ -1336,9 +1550,9 @@
             if (currentTool === 'stamp') {
                 hoverPreview.src = stampImgBase64;
                 const size = parseInt(stampSizeInput.value);
-                const displayW = size * RENDER_SCALE * scaleX;
-                hoverPreview.style.width = `${displayW}px`;
-                hoverPreview.style.height = `${displayW}px`;
+                const displayH = size * RENDER_SCALE * scaleX;
+                hoverPreview.style.width  = `${displayH * stampAspectRatio}px`;
+                hoverPreview.style.height = `${displayH}px`;
                 rotation = parseInt(stampRotationInput.value) || 0;
             } else if (currentTool === 'text') {
                 if(!currentTextImgData) updateTextPreview();
@@ -1440,6 +1654,15 @@
                 ctx.lineWidth = parseInt(penSizeInput.value) * RENDER_SCALE;
                 ctx.lineCap = 'round'; ctx.lineJoin = 'round';
                 ctx.stroke();
+            } else if (currentPenMode === 'shape') {
+                // 工程符號：恢復快照再畫即時預覽
+                if (!savedImageData || !rectStartPdf) return;
+                ctx.putImageData(savedImageData, 0, 0);
+                const [sx, sy] = canvas.pageViewport.convertToViewportPoint(rectStartPdf.pdfX, rectStartPdf.pdfY);
+                const [ex, ey] = canvas.pageViewport.convertToViewportPoint(pdfX, pdfY);
+                const col = document.getElementById('shape-color').value;
+                const lw  = parseInt(document.getElementById('shape-size').value) || 2;
+                drawEngShape(ctx, currentShape, sx, sy, ex, ey, col, lw * RENDER_SCALE);
             } else {
                 // 螢光筆 / 邊框：每次移動恢復快照再畫預覽矩形
                 if (!savedImageData || !rectStartPdf) return;
@@ -1482,7 +1705,10 @@
                     const rotation = parseInt(stampRotationInput.value) || 0;
                     annotations.push({
                         type: 'stamp', pageIndex: parseInt(canvas.dataset.pageIndex),
-                        pdfX, pdfY, width: size, height: size, imgBase64: stampImgBase64, rotation: rotation
+                        pdfX, pdfY,
+                        width:  Math.round(size * stampAspectRatio), // 方章寬度含比例
+                        height: size,
+                        imgBase64: stampImgBase64, rotation: rotation
                     });
                     
                     const ctx = canvas.getContext('2d');
@@ -1490,8 +1716,8 @@
                     img.src = stampImgBase64;
                     img.onload = () => {
                         const [canvasX, canvasY] = canvas.pageViewport.convertToViewportPoint(pdfX, pdfY);
-                        const displayW = size * RENDER_SCALE;
                         const displayH = size * RENDER_SCALE;
+                        const displayW = displayH * stampAspectRatio; // 方章長寬比正確
                         ctx.save();
                         ctx.translate(canvasX, canvasY);
                         ctx.rotate(rotation * Math.PI / 180);
@@ -1538,6 +1764,24 @@
                             path: currentPath, color: penColorInput.value, lineWidth: parseInt(penSizeInput.value)
                         });
                         updateUndoBtn();
+                    }
+                } else if (currentPenMode === 'shape') {
+                    // 工程符號確認：提交標註
+                    if (rectStartPdf) {
+                        const [pdfX2, pdfY2] = getEventPdfPoint(e, canvas);
+                        if (Math.abs(pdfX2 - rectStartPdf.pdfX) > 2 || Math.abs(pdfY2 - rectStartPdf.pdfY) > 2) {
+                            annotations.push({
+                                type: 'shape', shape: currentShape,
+                                pageIndex: parseInt(canvas.dataset.pageIndex),
+                                pdfX1: rectStartPdf.pdfX, pdfY1: rectStartPdf.pdfY,
+                                pdfX2: pdfX2, pdfY2: pdfY2,
+                                color: document.getElementById('shape-color').value,
+                                lineWidth: parseInt(document.getElementById('shape-size').value) || 2
+                            });
+                            updateUndoBtn();
+                        }
+                        rectStartPdf = null;
+                        savedImageData = null;
                     }
                 } else {
                     // 矩形確認：提交標註
@@ -1639,6 +1883,24 @@
                     } else {
                         page.drawRectangle({ x: rx, y: ry, width: rw, height: rh, borderColor: rgb(...rgbColor), borderWidth: 2 });
                     }
+                } else if (a.type === 'shape') {
+                    // 將工程符號離屏高解析度繪製成 PNG 後嵌入，確保與螢幕一致
+                    const bb  = shapePdfBBox(a);
+                    const lw  = a.lineWidth || 2;
+                    const pad = lw * 4 + 14;               // 箭頭/字符/線寬餘量
+                    const wPdf = (bb.maxX - bb.minX) + pad * 2;
+                    const hPdf = (bb.maxY - bb.minY) + pad * 2;
+                    const SC = 4;                          // 離屏高解析度倍率
+                    const oc = document.createElement('canvas');
+                    oc.width  = Math.max(1, Math.round(wPdf * SC));
+                    oc.height = Math.max(1, Math.round(hPdf * SC));
+                    const octx = oc.getContext('2d');
+                    octx.scale(SC, SC);
+                    const tx = p => (p - bb.minX) + pad;   // PDF→離屏 x
+                    const ty = p => (bb.maxY - p) + pad;   // PDF→離屏 y（翻轉）
+                    drawEngShape(octx, a.shape, tx(a.pdfX1), ty(a.pdfY1), tx(a.pdfX2), ty(a.pdfY2), a.color, lw);
+                    const png = await pdfDoc.embedPng(oc.toDataURL('image/png'));
+                    page.drawImage(png, { x: bb.minX - pad, y: bb.minY - pad, width: wPdf, height: hPdf });
                 }
             }
 
@@ -1757,10 +2019,15 @@
             const dp = localStorage.getItem('dept_person');
             const rn = localStorage.getItem('rect_stamp_name');
             const rb = localStorage.getItem('rect_border_width');
+            const ra = localStorage.getItem('rect_aspect_ratio');
             if (dn) document.getElementById('dept-name').value = dn;
             if (dp) document.getElementById('dept-person').value = dp;
             if (rn) document.getElementById('rect-stamp-name').value = rn;
             if (rb) { document.getElementById('rect-border-width').value = rb; document.getElementById('rect-border-label').textContent = rb; }
+            if (ra) {
+                document.getElementById('rect-aspect-ratio').value = ra;
+                document.getElementById('rect-ratio-label').textContent = (parseInt(ra)/10).toFixed(1) + ' : 1';
+            }
         })();
 
         // 部門章欄位監聽
@@ -1773,6 +2040,12 @@
         document.getElementById('rect-border-width').addEventListener('input', e => {
             document.getElementById('rect-border-label').textContent = e.target.value;
             localStorage.setItem('rect_border_width', e.target.value);
+            generateStampImage();
+        });
+        document.getElementById('rect-aspect-ratio').addEventListener('input', e => {
+            const ratio = (parseInt(e.target.value) / 10).toFixed(1);
+            document.getElementById('rect-ratio-label').textContent = ratio + ' : 1';
+            localStorage.setItem('rect_aspect_ratio', e.target.value);
             generateStampImage();
         });
 
@@ -1904,32 +2177,163 @@
             currentPenMode = mode;
             const freeBtn = document.getElementById('pen-mode-freehand');
             const hiBtn   = document.getElementById('pen-mode-highlight');
-            const borBtn  = document.getElementById('pen-mode-border');
-            const freeOpts = document.getElementById('pen-freehand-opts');
-            const rectOpts = document.getElementById('pen-rect-opts');
-            const hint     = document.getElementById('pen-rect-hint');
+            const shpBtn  = document.getElementById('pen-mode-shape');
+            const freeOpts  = document.getElementById('pen-freehand-opts');
+            const rectOpts  = document.getElementById('pen-rect-opts');
+            const shapeOpts = document.getElementById('pen-shape-opts');
+            const hint      = document.getElementById('pen-rect-hint');
 
-            [freeBtn, hiBtn, borBtn].forEach(b => {
+            [freeBtn, hiBtn, shpBtn].forEach(b => {
                 b.className = 'flex-1 py-2 px-1 text-xs font-bold rounded border-2 border-gray-200 bg-white text-gray-600';
             });
+            freeOpts.classList.add('hidden');
+            rectOpts.classList.add('hidden');
+            shapeOpts.classList.add('hidden');
 
             if (mode === 'freehand') {
                 freeBtn.className = 'flex-1 py-2 px-1 text-xs font-bold rounded border-2 border-blue-400 bg-blue-50 text-blue-700';
                 freeOpts.classList.remove('hidden');
-                rectOpts.classList.add('hidden');
             } else if (mode === 'highlight') {
                 hiBtn.className = 'flex-1 py-2 px-1 text-xs font-bold rounded border-2 border-yellow-400 bg-yellow-50 text-yellow-700';
-                freeOpts.classList.add('hidden');
                 rectOpts.classList.remove('hidden');
                 document.getElementById('rect-color').value = '#facc15';
                 hint.textContent = '🟡 螢光筆：拖曳畫半透明矩形';
-            } else {
-                borBtn.className = 'flex-1 py-2 px-1 text-xs font-bold rounded border-2 border-red-400 bg-red-50 text-red-700';
-                freeOpts.classList.add('hidden');
-                rectOpts.classList.remove('hidden');
-                document.getElementById('rect-color').value = '#ef4444';
-                hint.textContent = '🔲 邊框：拖曳畫實線外框矩形';
+            } else { // shape
+                shpBtn.className = 'flex-1 py-2 px-1 text-xs font-bold rounded border-2 border-indigo-400 bg-indigo-50 text-indigo-700';
+                shapeOpts.classList.remove('hidden');
+                setShape(currentShape);
             }
+        }
+
+        // 選擇工程符號
+        function setShape(name) {
+            currentShape = name;
+            document.querySelectorAll('#shape-grid .shape-btn').forEach(b => {
+                b.className = b.dataset.shape === name
+                    ? 'shape-btn py-2 text-xs font-bold rounded border-2 border-indigo-400 bg-indigo-50 text-indigo-700'
+                    : 'shape-btn py-2 text-xs font-bold rounded border-2 border-gray-200 bg-white text-gray-600';
+            });
+        }
+
+        // ============================================================
+        // 工程符號繪製（單一來源：螢幕預覽 / 重繪 / PDF 匯出皆共用）
+        // 傳入「目標 canvas 的裝置座標」x1,y1,x2,y2，lw = 該 canvas 的線寬(px)
+        // ============================================================
+        function drawEngShape(ctx, shape, x1, y1, x2, y2, color, lw) {
+            ctx.save();
+            ctx.strokeStyle = color;
+            ctx.fillStyle = color;
+            ctx.lineWidth = lw;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            const dx = x2 - x1, dy = y2 - y1;
+            const ang = Math.atan2(dy, dx);
+            const len = Math.hypot(dx, dy);
+            const ah = Math.max(7, lw * 4);   // 箭頭長
+            const aSpread = 0.42;             // 箭頭張角
+
+            // 在 (x,y) 畫一個指向角度 a 的實心箭頭
+            function arrowHead(x, y, a) {
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(x - ah * Math.cos(a - aSpread), y - ah * Math.sin(a - aSpread));
+                ctx.lineTo(x - ah * Math.cos(a + aSpread), y - ah * Math.sin(a + aSpread));
+                ctx.closePath();
+                ctx.fill();
+            }
+            function lineSeg(ax, ay, bx, by) {
+                ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+            }
+            // 在某點畫符號文字（⌀ / R）— 不加白底，避免蓋住附近圖案
+            function glyph(txt, gx, gy) {
+                const fs = Math.max(11, lw * 6);
+                ctx.font = `bold ${fs}px Arial, sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(txt, gx, gy);
+            }
+
+            switch (shape) {
+                case 'line':
+                    lineSeg(x1, y1, x2, y2);
+                    break;
+                case 'arrow':
+                    lineSeg(x1, y1, x2, y2);
+                    arrowHead(x2, y2, ang);
+                    break;
+                case 'dim':
+                    lineSeg(x1, y1, x2, y2);
+                    arrowHead(x2, y2, ang);
+                    arrowHead(x1, y1, ang + Math.PI);
+                    break;
+                case 'rect':
+                    ctx.strokeRect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(dx), Math.abs(dy));
+                    break;
+                case 'square': {
+                    const s = Math.min(Math.abs(dx), Math.abs(dy));
+                    const sx = x1 + Math.sign(dx || 1) * s;
+                    const sy = y1 + Math.sign(dy || 1) * s;
+                    ctx.strokeRect(Math.min(x1, sx), Math.min(y1, sy), s, s);
+                    break;
+                }
+                case 'ellipse': {
+                    const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2;
+                    ctx.beginPath();
+                    ctx.ellipse(cx, cy, Math.abs(dx) / 2, Math.abs(dy) / 2, 0, 0, Math.PI * 2);
+                    ctx.stroke();
+                    break;
+                }
+                case 'circle': {
+                    // P1 圓心、P2 決定半徑
+                    ctx.beginPath();
+                    ctx.arc(x1, y1, len, 0, Math.PI * 2);
+                    ctx.stroke();
+                    break;
+                }
+                case 'diameter': {
+                    // P1-P2 為直徑兩端：圓心在中點，半徑 = 半距，畫圓 + 直徑線 + ⌀
+                    const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2, r = len / 2;
+                    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+                    lineSeg(x1, y1, x2, y2);
+                    // ⌀ 往線的垂直方向偏移，避免壓在直徑線上
+                    {
+                        const off = Math.max(11, lw * 6) * 0.85;
+                        glyph('⌀', cx - Math.sin(ang) * off, cy + Math.cos(ang) * off);
+                    }
+                    break;
+                }
+                case 'radius': {
+                    // P1 圓心、P2 邊緣：畫圓 + 半徑線 + R
+                    ctx.beginPath(); ctx.arc(x1, y1, len, 0, Math.PI * 2); ctx.stroke();
+                    lineSeg(x1, y1, x2, y2);
+                    // R 往線的垂直方向偏移，避免壓在半徑線上
+                    {
+                        const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+                        const off = Math.max(11, lw * 6) * 0.85;
+                        glyph('R', mx - Math.sin(ang) * off, my + Math.cos(ang) * off);
+                    }
+                    break;
+                }
+            }
+            ctx.restore();
+        }
+
+        // 工程符號在 PDF 座標系的實際幾何外框（含圓形向四周擴張）
+        function shapePdfBBox(a) {
+            const x1 = a.pdfX1, y1 = a.pdfY1, x2 = a.pdfX2, y2 = a.pdfY2;
+            const len = Math.hypot(x2 - x1, y2 - y1);
+            if (a.shape === 'circle' || a.shape === 'radius') {
+                return { minX: x1 - len, maxX: x1 + len, minY: y1 - len, maxY: y1 + len };
+            }
+            if (a.shape === 'diameter') {
+                const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2, r = len / 2;
+                return { minX: cx - r, maxX: cx + r, minY: cy - r, maxY: cy + r };
+            }
+            // 其餘：以端點外框為準（箭頭超出量由 pad 吸收）
+            return {
+                minX: Math.min(x1, x2), maxX: Math.max(x1, x2),
+                minY: Math.min(y1, y2), maxY: Math.max(y1, y2)
+            };
         }
 
         // ============================================================
