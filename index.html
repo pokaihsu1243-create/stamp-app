@@ -1313,10 +1313,19 @@
         });
 
         let lazyObserver = null;
+        let renderToken = 0; // 每次換檔 +1，背景迴圈用來判斷是否該停止
+
+        // 共用：認領後才渲染（同步先把旗標設掉，避免觀察器與背景迴圈同頁重複渲染）
+        async function renderPageIfNeeded(wrapper) {
+            if (!wrapper || wrapper.dataset.needsRender !== 'true') return;
+            wrapper.dataset.needsRender = 'false'; // 同步認領，後面才有 await
+            await renderSinglePage(parseInt(wrapper.dataset.wrapperIndex) + 1);
+        }
 
         async function renderPdf(data) {
             pdfContainer.innerHTML = '';
             if (lazyObserver) { lazyObserver.disconnect(); lazyObserver = null; }
+            const myToken = ++renderToken; // 標記本次載入
 
             const loadingTask = pdfjsLib.getDocument({ data: data.slice(0) });
             pdfInstance = await loadingTask.promise;
@@ -1347,14 +1356,12 @@
                 pdfContainer.appendChild(wrapper);
             }
 
-            // IntersectionObserver：滾動到才渲染
+            // IntersectionObserver：滾動到的頁優先插隊渲染（提升快速捲動時的反應）
             lazyObserver = new IntersectionObserver(async (entries) => {
                 for (const entry of entries) {
                     if (entry.isIntersecting && entry.target.dataset.needsRender === 'true') {
-                        entry.target.dataset.needsRender = 'false';
                         lazyObserver.unobserve(entry.target);
-                        const pageNum = parseInt(entry.target.dataset.wrapperIndex) + 1;
-                        await renderSinglePage(pageNum);
+                        await renderPageIfNeeded(entry.target);
                     }
                 }
             }, { rootMargin: '300px' });
@@ -1365,6 +1372,16 @@
             const pageIndicator = document.getElementById('page-indicator');
             pageIndicator.classList.remove('hidden');
             updatePageIndicator();
+
+            // 背景預先渲染：趁使用者看第一頁時，依序把其餘頁默默畫好
+            // 與觀察器共用 needsRender 旗標，所以不會同頁畫兩次
+            (async () => {
+                const wrappers = Array.from(document.querySelectorAll('[data-needs-render="true"]'));
+                for (const w of wrappers) {
+                    if (myToken !== renderToken) return; // 已換檔 → 停止舊迴圈
+                    await renderPageIfNeeded(w);
+                }
+            })();
         }
 
         async function renderSinglePage(pageNumber) {
