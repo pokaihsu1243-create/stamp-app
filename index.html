@@ -499,6 +499,9 @@
         let batchFiles = [];
         let batchIndex = 0;
         let isBatchMode = false;
+        // 批次「下一份」整本預載快取
+        let prefetchCache = null;  // { file, pdfDoc, data, pages: [{canvas, viewport}] }
+        let prefetchToken = 0;
 
         // 拖曳平移 (Panning) 暫存狀態
         let isPanning = false;
@@ -1273,13 +1276,23 @@
         // 獨立出檔案處理邏輯，確保直接拖曳也能完美執行
         async function processFile(file) {
             if (!file) return;
-            loadingOverlay.style.display = 'flex';
             originalFileName = file.name.replace(/\.[^/.]+$/, "");
-            currentPdfData = await file.arrayBuffer();
             annotations = [];
             displayScale = null; // 更換檔案時，重置縮放比例以適應新檔案
             updateUndoBtn();
 
+            // 批次預載命中：整本已在背景畫好，直接秒開
+            if (prefetchCache && prefetchCache.file === file) {
+                const cache = prefetchCache;
+                prefetchCache = null;
+                currentPdfData = cache.data;
+                renderPdfFromCache(cache);
+                maybePrefetchNextBatch(); // 接著預載再下一份
+                return;
+            }
+
+            loadingOverlay.style.display = 'flex';
+            currentPdfData = await file.arrayBuffer();
             await renderPdf(currentPdfData);
         }
 
@@ -1373,14 +1386,19 @@
             pageIndicator.classList.remove('hidden');
             updatePageIndicator();
 
-            // 背景預先渲染：趁使用者看第一頁時，依序把其餘頁默默畫好
+            // 背景預先渲染：趁使用者看第一頁時，2 路併發把其餘頁默默畫好
             // 與觀察器共用 needsRender 旗標，所以不會同頁畫兩次
             (async () => {
-                const wrappers = Array.from(document.querySelectorAll('[data-needs-render="true"]'));
-                for (const w of wrappers) {
-                    if (myToken !== renderToken) return; // 已換檔 → 停止舊迴圈
-                    await renderPageIfNeeded(w);
-                }
+                const queue = Array.from(document.querySelectorAll('[data-needs-render="true"]'));
+                const worker = async () => {
+                    while (queue.length) {
+                        if (myToken !== renderToken) return; // 已換檔 → 停止舊迴圈
+                        await renderPageIfNeeded(queue.shift());
+                    }
+                };
+                await Promise.all([worker(), worker()]);
+                // 本檔全部畫完 → 批次模式下開始預載下一份
+                if (myToken === renderToken) maybePrefetchNextBatch();
             })();
         }
 
@@ -2404,8 +2422,10 @@
                 // 第一批：立刻開始處理第一份
                 batchIndex = 0;
                 await loadBatchFile();
+            } else {
+                // 隊列已有內容：只追加，不切換當前頁；若下一份尚未預載則補上
+                maybePrefetchNextBatch();
             }
-            // 若隊列已有內容，只追加，不切換當前頁
         }
 
         async function loadBatchFile() {
@@ -2436,7 +2456,73 @@
         function batchStop() {
             batchFiles = [];
             batchIndex = 0;
+            prefetchCache = null;
+            prefetchToken++; // 中止進行中的預載
             document.getElementById('batch-bar').classList.add('hidden');
+        }
+
+        // ==== 批次「下一份」整本預載 ====
+        // 趁使用者處理當前檔案時，把下一份每一頁先畫進離屏 canvas，
+        // 按「下一份」時直接整本掛載，零等待。
+        async function maybePrefetchNextBatch() {
+            if (!isBatchMode) return;
+            const next = batchFiles[batchIndex + 1];
+            if (!next || (prefetchCache && prefetchCache.file === next)) return;
+            const myTok = ++prefetchToken;
+            try {
+                const data = await next.arrayBuffer();
+                const doc = await pdfjsLib.getDocument({ data: data.slice(0) }).promise;
+                const pages = [];
+                for (let i = 1; i <= doc.numPages; i++) {
+                    if (myTok !== prefetchToken) return; // 已被取消/取代
+                    const page = await doc.getPage(i);
+                    const viewport = page.getViewport({ scale: RENDER_SCALE });
+                    const canvas = document.createElement('canvas');
+                    canvas.width = viewport.width;
+                    canvas.height = viewport.height;
+                    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+                    pages.push({ canvas, viewport });
+                }
+                if (myTok !== prefetchToken) return;
+                prefetchCache = { file: next, pdfDoc: doc, data, pages };
+            } catch (err) {
+                console.warn('下一份預載失敗，將改為即時載入', err);
+            }
+        }
+
+        // 用預載快取直接掛載整本（所有頁已畫好）
+        function renderPdfFromCache(cache) {
+            renderToken++; // 停止舊檔的背景渲染迴圈
+            if (lazyObserver) { lazyObserver.disconnect(); lazyObserver = null; }
+            pdfContainer.innerHTML = '';
+            pdfInstance = cache.pdfDoc;
+
+            cache.pages.forEach(({ canvas, viewport }, idx) => {
+                canvas.dataset.pageIndex = idx;
+                canvas.pageViewport = viewport;
+                canvas.addEventListener('contextmenu', e => e.preventDefault());
+                canvas.addEventListener('pointerdown', handlePointerDown);
+                canvas.addEventListener('pointermove', handlePointerMove);
+                canvas.addEventListener('pointerup', handlePointerUp);
+                canvas.addEventListener('pointercancel', handlePointerUp);
+                canvas.addEventListener('pointerleave', hideHoverPreview);
+
+                const wrapper = document.createElement('div');
+                wrapper.className = 'relative inline-block w-full text-center mb-4';
+                wrapper.dataset.wrapperIndex = idx;
+                wrapper.appendChild(canvas);
+                pdfContainer.appendChild(wrapper);
+            });
+
+            welcomeScreen.classList.add('hidden');
+            editorUi.classList.remove('hidden');
+            saveBtn.disabled = false;
+            shareBtn.disabled = false;
+            loadingOverlay.style.display = 'none';
+            pdfContainer.scrollTop = 0;
+            document.getElementById('page-indicator').classList.remove('hidden');
+            updatePageIndicator();
+            updateCanvasTouchAction();
         }
 
         // ============================================================
