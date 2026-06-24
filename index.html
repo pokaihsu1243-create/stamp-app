@@ -1720,11 +1720,20 @@
         }
 
         function handlePointerUp(e) {
+            // pointercancel = 瀏覽器收回觸控控制權（手機捲動），只重置狀態，不蓋章
+            if (e.type === 'pointercancel') {
+                isPanning = false;
+                isDrawing = false;
+                isPointerDragging = false;
+                hideHoverPreview();
+                return;
+            }
+
             if (isPanning) {
                 isPanning = false;
                 const canvas = e.target;
                 canvas.releasePointerCapture(e.pointerId);
-                canvas.style.cursor = 'crosshair'; 
+                canvas.style.cursor = 'crosshair';
                 return;
             }
 
