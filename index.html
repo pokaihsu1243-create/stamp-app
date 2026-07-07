@@ -465,6 +465,7 @@
                 <!-- PDF Canvases will be injected here -->
                 <!-- 頁碼顯示 -->
                 <div id="page-indicator" class="hidden fixed bottom-4 right-4 lg:bottom-6 lg:right-6 z-30 bg-black bg-opacity-60 text-white text-xs font-bold px-3 py-1.5 rounded-full pointer-events-none select-none shadow-lg">1 / 1</div>
+                <div id="render-progress" class="hidden fixed bottom-12 right-4 lg:bottom-16 lg:right-6 z-30 bg-amber-500 bg-opacity-90 text-white text-xs font-bold px-3 py-1.5 rounded-full pointer-events-none select-none shadow-lg">背景讀取中…</div>
             </div>
 
         </div>
@@ -1281,10 +1282,11 @@
             displayScale = null; // 更換檔案時，重置縮放比例以適應新檔案
             updateUndoBtn();
 
-            // 批次預載命中：整本已在背景畫好，直接秒開
+            // 批次預載命中：已畫好的頁直接秒開，沒畫完的部分由背景掃描無縫接手
             if (prefetchCache && prefetchCache.file === file) {
                 const cache = prefetchCache;
                 prefetchCache = null;
+                prefetchToken++; // 取消仍在進行的預載迴圈（已畫好的頁照用，不浪費）
                 currentPdfData = cache.data;
                 renderPdfFromCache(cache);
                 maybePrefetchNextBatch(); // 接著預載再下一份
@@ -1327,18 +1329,154 @@
 
         let lazyObserver = null;
         let renderToken = 0; // 每次換檔 +1，背景迴圈用來判斷是否該停止
+        let sweepWorkers = 0; // 背景掃描目前的併發數（防重入）
+        const APP_TITLE = document.title;
+        // 進行中的「可取消」渲染任務：切到背景分頁時取消它們，改用不受節流的模式立刻重畫
+        const activeCancellableTasks = new Set();
 
         // 共用：認領後才渲染（同步先把旗標設掉，避免觀察器與背景迴圈同頁重複渲染）
         async function renderPageIfNeeded(wrapper) {
             if (!wrapper || wrapper.dataset.needsRender !== 'true') return;
             wrapper.dataset.needsRender = 'false'; // 同步認領，後面才有 await
-            await renderSinglePage(parseInt(wrapper.dataset.wrapperIndex) + 1);
+            try {
+                await renderSinglePage(parseInt(wrapper.dataset.wrapperIndex) + 1, true);
+                wrapper.dataset.failCount = '0';
+            } catch (err) {
+                // 切到背景分頁時主動取消的渲染：還原旗標，掃描會立刻用背景模式重畫，不算失敗
+                if (err && err.name === 'RenderingCancelledException') {
+                    wrapper.dataset.needsRender = 'true';
+                    return;
+                }
+                // 渲染失敗（常見於手機記憶體吃緊）→ 還原旗標，讓看門狗/捲動重試
+                console.warn('頁面渲染失敗，將重試', err);
+                const fails = (parseInt(wrapper.dataset.failCount) || 0) + 1;
+                wrapper.dataset.failCount = fails;
+                if (fails < 3) {
+                    wrapper.dataset.needsRender = 'true';
+                } else {
+                    const pageNum = parseInt(wrapper.dataset.wrapperIndex) + 1;
+                    wrapper.innerHTML = `<div class="flex items-center justify-center cursor-pointer" style="height:500px">
+                        <div class="text-center text-red-400">
+                            <div class="text-4xl mb-2">⚠️</div>
+                            <p class="text-sm">第 ${pageNum} 頁載入失敗，點擊重試</p>
+                        </div>
+                    </div>`;
+                    wrapper.onclick = () => {
+                        wrapper.onclick = null;
+                        wrapper.dataset.failCount = '0';
+                        wrapper.dataset.needsRender = 'true';
+                        startBackgroundSweep();
+                    };
+                }
+            }
         }
+
+        // 建立單頁佔位符（等背景掃描或捲動到時渲染）
+        function createPagePlaceholder(pageIndex) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'relative inline-block w-full text-center mb-4 bg-white';
+            wrapper.dataset.wrapperIndex = pageIndex;
+            wrapper.dataset.needsRender = 'true';
+            wrapper.style.minHeight = '500px';
+            wrapper.innerHTML = `<div class="flex items-center justify-center" style="height:500px">
+                <div class="text-center text-gray-400">
+                    <div class="text-4xl mb-2 animate-pulse">📄</div>
+                    <p class="text-sm">第 ${pageIndex + 1} 頁</p>
+                </div>
+            </div>`;
+            return wrapper;
+        }
+
+        // IntersectionObserver：滾動到的頁優先插隊渲染
+        function setupLazyObserver() {
+            if (lazyObserver) { lazyObserver.disconnect(); lazyObserver = null; }
+            lazyObserver = new IntersectionObserver(async (entries) => {
+                for (const entry of entries) {
+                    if (entry.isIntersecting && entry.target.dataset.needsRender === 'true') {
+                        lazyObserver.unobserve(entry.target);
+                        await renderPageIfNeeded(entry.target);
+                    }
+                }
+            }, { rootMargin: '300px' });
+            document.querySelectorAll('[data-needs-render="true"]').forEach(el => lazyObserver.observe(el));
+        }
+
+        // 挑「離目前畫面最近」的未渲染頁：使用者拉到哪，就優先畫哪附近
+        function nextPendingWrapper() {
+            const pending = document.querySelectorAll('[data-needs-render="true"]');
+            if (!pending.length) return null;
+            const rect = pdfContainer.getBoundingClientRect();
+            const mid = rect.top + rect.height / 2;
+            let best = null, bestDist = Infinity;
+            pending.forEach(el => {
+                const r = el.getBoundingClientRect();
+                const dist = Math.abs((r.top + r.bottom) / 2 - mid);
+                if (dist < bestDist) { bestDist = dist; best = el; }
+            });
+            return best;
+        }
+
+        // 右下角「背景讀取中，剩 N 頁」進度提示 + 分頁標題進度（切到別的視窗也看得到）
+        function updateRenderProgress() {
+            const badge = document.getElementById('render-progress');
+            const remaining = document.querySelectorAll('[data-needs-render="true"]').length;
+            if (remaining > 0 && pdfInstance) {
+                badge.textContent = `背景讀取中，剩 ${remaining} 頁`;
+                badge.classList.remove('hidden');
+                document.title = `(讀取中 剩${remaining}頁) ${APP_TITLE}`;
+            } else {
+                badge.classList.add('hidden');
+                document.title = APP_TITLE;
+            }
+        }
+
+        // 背景掃描：2 路併發把所有未渲染頁默默畫好；可重複呼叫（自帶防重入）
+        function startBackgroundSweep() {
+            if (sweepWorkers > 0) return; // 已有掃描在跑
+            if (!document.querySelector('[data-needs-render="true"]')) { updateRenderProgress(); return; }
+            const myToken = renderToken;
+            const worker = async () => {
+                while (myToken === renderToken) {
+                    const el = nextPendingWrapper();
+                    if (!el) return;
+                    await renderPageIfNeeded(el);
+                    updateRenderProgress();
+                }
+            };
+            updateRenderProgress();
+            sweepWorkers = 2;
+            Promise.allSettled([
+                worker().finally(() => sweepWorkers--),
+                worker().finally(() => sweepWorkers--),
+            ]).then(() => {
+                updateRenderProgress();
+                // 本檔全部畫完 → 批次模式下開始預載下一份
+                if (myToken === renderToken && !document.querySelector('[data-needs-render="true"]')) {
+                    maybePrefetchNextBatch();
+                }
+            });
+        }
+
+        // 看門狗：每 3 秒檢查是否還有漏掉的頁（渲染出錯、迴圈中斷等情況自動恢復）
+        setInterval(() => {
+            if (!pdfInstance) return;
+            startBackgroundSweep();
+        }, 3000);
+
+        // 分頁切到背景：取消進行中的 rAF 節奏渲染，掃描立刻以不受節流的 print 模式重畫，
+        // 使用者切出去做別的事時照樣全速讀完；切回來時補一次掃描
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                activeCancellableTasks.forEach(t => { try { t.cancel(); } catch (_) {} });
+            } else {
+                startBackgroundSweep();
+            }
+        });
 
         async function renderPdf(data) {
             pdfContainer.innerHTML = '';
             if (lazyObserver) { lazyObserver.disconnect(); lazyObserver = null; }
-            const myToken = ++renderToken; // 標記本次載入
+            renderToken++; // 停止舊檔的背景掃描
 
             const loadingTask = pdfjsLib.getDocument({ data: data.slice(0) });
             pdfInstance = await loadingTask.promise;
@@ -1352,57 +1490,24 @@
             shareBtn.disabled = false;
             loadingOverlay.style.display = 'none';
 
-            // 其餘頁建立佔位符，等滾動到才渲染
+            // 其餘頁建立佔位符，等背景掃描或滾動到才渲染
             for (let i = 2; i <= pdfInstance.numPages; i++) {
-                const pageIndex = i - 1;
-                const wrapper = document.createElement('div');
-                wrapper.className = 'relative inline-block w-full text-center mb-4 bg-white';
-                wrapper.dataset.wrapperIndex = pageIndex;
-                wrapper.dataset.needsRender = 'true';
-                wrapper.style.minHeight = '500px';
-                wrapper.innerHTML = `<div class="flex items-center justify-center" style="height:500px">
-                    <div class="text-center text-gray-400">
-                        <div class="text-4xl mb-2 animate-pulse">📄</div>
-                        <p class="text-sm">第 ${i} 頁</p>
-                    </div>
-                </div>`;
-                pdfContainer.appendChild(wrapper);
+                pdfContainer.appendChild(createPagePlaceholder(i - 1));
             }
 
-            // IntersectionObserver：滾動到的頁優先插隊渲染（提升快速捲動時的反應）
-            lazyObserver = new IntersectionObserver(async (entries) => {
-                for (const entry of entries) {
-                    if (entry.isIntersecting && entry.target.dataset.needsRender === 'true') {
-                        lazyObserver.unobserve(entry.target);
-                        await renderPageIfNeeded(entry.target);
-                    }
-                }
-            }, { rootMargin: '300px' });
-
-            document.querySelectorAll('[data-needs-render="true"]').forEach(el => lazyObserver.observe(el));
+            setupLazyObserver();
 
             // 頁碼顯示
             const pageIndicator = document.getElementById('page-indicator');
             pageIndicator.classList.remove('hidden');
             updatePageIndicator();
 
-            // 背景預先渲染：趁使用者看第一頁時，2 路併發把其餘頁默默畫好
-            // 與觀察器共用 needsRender 旗標，所以不會同頁畫兩次
-            (async () => {
-                const queue = Array.from(document.querySelectorAll('[data-needs-render="true"]'));
-                const worker = async () => {
-                    while (queue.length) {
-                        if (myToken !== renderToken) return; // 已換檔 → 停止舊迴圈
-                        await renderPageIfNeeded(queue.shift());
-                    }
-                };
-                await Promise.all([worker(), worker()]);
-                // 本檔全部畫完 → 批次模式下開始預載下一份
-                if (myToken === renderToken) maybePrefetchNextBatch();
-            })();
+            // 背景預先渲染：趁使用者看第一頁時默默把其餘頁畫好
+            // （若舊掃描還沒退場導致這次沒啟動，3 秒內看門狗會補啟動）
+            startBackgroundSweep();
         }
 
-        async function renderSinglePage(pageNumber) {
+        async function renderSinglePage(pageNumber, cancellable = false) {
             const pageIndex = pageNumber - 1;
             const page = await pdfInstance.getPage(pageNumber);
             const viewport = page.getViewport({ scale: RENDER_SCALE });
@@ -1422,7 +1527,18 @@
             }
 
             // Step 1：渲染 PDF 頁面到新 canvas（此時舊 canvas 還在畫面上）
-            await page.render({ canvasContext: context, viewport: viewport }).promise;
+            // 背景分頁時改用 print 模式排程（微任務、不受瀏覽器節流），切出去也能全速讀
+            const renderTask = page.render({
+                canvasContext: context,
+                viewport: viewport,
+                intent: document.hidden ? 'print' : 'display'
+            });
+            if (cancellable) activeCancellableTasks.add(renderTask);
+            try {
+                await renderTask.promise;
+            } finally {
+                activeCancellableTasks.delete(renderTask);
+            }
 
             // Step 2：把標註疊上去
             const pageAnnos = annotations.filter(a => a.pageIndex === pageIndex);
@@ -2473,6 +2589,9 @@
         // ==== 批次「下一份」整本預載 ====
         // 趁使用者處理當前檔案時，把下一份每一頁先畫進離屏 canvas，
         // 按「下一份」時直接整本掛載，零等待。
+        // 手機 canvas 記憶體有限，預載頁數設上限（超出的頁切換後由背景掃描接手）
+        const PREFETCH_PAGE_CAP = matchMedia('(pointer: coarse)').matches ? 12 : 60;
+
         async function maybePrefetchNextBatch() {
             if (!isBatchMode) return;
             const next = batchFiles[batchIndex + 1];
@@ -2481,28 +2600,42 @@
             try {
                 const data = await next.arrayBuffer();
                 const doc = await pdfjsLib.getDocument({ data: data.slice(0) }).promise;
-                const pages = [];
-                for (let i = 1; i <= doc.numPages; i++) {
-                    if (myTok !== prefetchToken) return; // 已被取消/取代
+                if (myTok !== prefetchToken) return;
+                // 邊畫邊存：快取立刻可用，就算沒畫完，切換時已畫好的頁也直接秒開
+                const cache = { file: next, pdfDoc: doc, data, pages: [], total: doc.numPages };
+                prefetchCache = cache;
+                const cap = Math.min(doc.numPages, PREFETCH_PAGE_CAP);
+                for (let i = 1; i <= cap; i++) {
+                    if (myTok !== prefetchToken) return; // 已被取消/消費，停止（已畫好的頁保留使用）
                     const page = await doc.getPage(i);
                     const viewport = page.getViewport({ scale: RENDER_SCALE });
                     const canvas = document.createElement('canvas');
                     canvas.width = viewport.width;
                     canvas.height = viewport.height;
-                    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-                    pages.push({ canvas, viewport });
+                    // 背景分頁時用 print 模式排程，切出去也照樣預載
+                    const task = page.render({
+                        canvasContext: canvas.getContext('2d'), viewport,
+                        intent: document.hidden ? 'print' : 'display'
+                    });
+                    activeCancellableTasks.add(task);
+                    try {
+                        await task.promise;
+                    } catch (err) {
+                        if (err && err.name === 'RenderingCancelledException') { i--; continue; } // 換模式重畫同一頁
+                        throw err;
+                    } finally {
+                        activeCancellableTasks.delete(task);
+                    }
+                    cache.pages.push({ canvas, viewport });
                 }
-                if (myTok !== prefetchToken) return;
-                prefetchCache = { file: next, pdfDoc: doc, data, pages };
             } catch (err) {
                 console.warn('下一份預載失敗，將改為即時載入', err);
             }
         }
 
-        // 用預載快取直接掛載整本（所有頁已畫好）
+        // 用預載快取直接掛載（已畫好的頁直接上，超出預載上限的頁交給背景掃描）
         function renderPdfFromCache(cache) {
             renderToken++; // 停止舊檔的背景渲染迴圈
-            if (lazyObserver) { lazyObserver.disconnect(); lazyObserver = null; }
             pdfContainer.innerHTML = '';
             pdfInstance = cache.pdfDoc;
 
@@ -2522,6 +2655,14 @@
                 wrapper.appendChild(canvas);
                 pdfContainer.appendChild(wrapper);
             });
+
+            // 超出預載上限的頁：建佔位符，背景掃描接手
+            const total = cache.total || cache.pages.length;
+            for (let i = cache.pages.length; i < total; i++) {
+                pdfContainer.appendChild(createPagePlaceholder(i));
+            }
+            setupLazyObserver();
+            startBackgroundSweep();
 
             welcomeScreen.classList.add('hidden');
             editorUi.classList.remove('hidden');
