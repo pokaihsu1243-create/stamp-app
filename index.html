@@ -95,6 +95,11 @@
                     <span class="hidden sm:inline">分享</span>
                 </button>
 
+                <!-- 儲存資料夾設定 (僅桌機 Chrome/Edge 顯示) -->
+                <button id="folder-btn" class="hidden bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-2 rounded transition border border-gray-300 text-sm font-bold shadow-sm items-center gap-1 max-w-[180px]" title="設定「另存」直接存入的資料夾(設定一次後記憶)">
+                    <span>📁</span><span id="folder-btn-label" class="hidden sm:inline truncate">設定資料夾</span>
+                </button>
+
                 <button id="save-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed transition text-sm md:text-base font-bold shadow-sm" disabled>
                     另存 PDF
                 </button>
@@ -2076,14 +2081,154 @@
             return { pdfBytes, newFileName };
         }
 
+        // ============================================================
+        // 儲存資料夾記憶 (File System Access API，僅桌機 Chrome/Edge)
+        // 資料夾 handle 存在 IndexedDB，設定一次後長期記憶
+        // ============================================================
+        const supportsFolderSave = 'showDirectoryPicker' in window;
+        let saveDirHandle = null; // 目前記憶的資料夾 handle
+
+        // ---- 極簡 IndexedDB：存放 dir handle ----
+        function idbOpen() {
+            return new Promise((resolve, reject) => {
+                const req = indexedDB.open('stamp-app-fs', 1);
+                req.onupgradeneeded = () => req.result.createObjectStore('handles');
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+        }
+        async function idbSet(key, val) {
+            const db = await idbOpen();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction('handles', 'readwrite');
+                tx.objectStore('handles').put(val, key);
+                tx.oncomplete = resolve; tx.onerror = () => reject(tx.error);
+            });
+        }
+        async function idbGet(key) {
+            const db = await idbOpen();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction('handles', 'readonly');
+                const r = tx.objectStore('handles').get(key);
+                r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error);
+            });
+        }
+        async function idbDel(key) {
+            const db = await idbOpen();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction('handles', 'readwrite');
+                tx.objectStore('handles').delete(key);
+                tx.oncomplete = resolve; tx.onerror = () => reject(tx.error);
+            });
+        }
+
+        // 更新資料夾按鈕上的文字
+        function updateFolderBtnLabel() {
+            const label = document.getElementById('folder-btn-label');
+            if (saveDirHandle) {
+                label.textContent = saveDirHandle.name;
+                document.getElementById('folder-btn').title = `另存會直接存入資料夾「${saveDirHandle.name}」(點擊可更換)`;
+            } else {
+                label.textContent = '設定資料夾';
+                document.getElementById('folder-btn').title = '設定「另存」直接存入的資料夾(設定一次後記憶)';
+            }
+        }
+
+        // 確認對某資料夾有讀寫權限(必要時在使用者手勢中請求)
+        async function ensureDirPermission(handle, requestIfNeeded) {
+            if (!handle) return false;
+            const opts = { mode: 'readwrite' };
+            if ((await handle.queryPermission(opts)) === 'granted') return true;
+            if (requestIfNeeded && (await handle.requestPermission(opts)) === 'granted') return true;
+            return false;
+        }
+
+        // 啟動時載入記憶的資料夾
+        (async () => {
+            if (!supportsFolderSave) return;
+            const folderBtn = document.getElementById('folder-btn');
+            folderBtn.classList.remove('hidden');
+            folderBtn.classList.add('flex');
+            try {
+                const saved = await idbGet('saveDir');
+                if (saved) saveDirHandle = saved; // 權限延到儲存時再請求(需使用者手勢)
+            } catch (_) {}
+            updateFolderBtnLabel();
+
+            folderBtn.addEventListener('click', async () => {
+                try {
+                    const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+                    if (await ensureDirPermission(handle, true)) {
+                        saveDirHandle = handle;
+                        await idbSet('saveDir', handle);
+                        updateFolderBtnLabel();
+                        showToast(`✅ 已設定資料夾：${handle.name}，之後「另存」會直接存入`);
+                    }
+                } catch (err) {
+                    if (err.name !== 'AbortError') console.warn('選擇資料夾失敗', err);
+                }
+            });
+        })();
+
+        // 寫入記憶資料夾；成功回傳 true，權限失效/無資料夾回傳 false
+        async function saveToFolder(pdfBytes, fileName) {
+            if (!saveDirHandle) return false;
+            if (!(await ensureDirPermission(saveDirHandle, true))) return false;
+            let target = fileName;
+            // 若同名檔已存在，自動加序號避免覆蓋
+            try {
+                for (let n = 1; n < 1000; n++) {
+                    try {
+                        await saveDirHandle.getFileHandle(target);
+                        target = fileName.replace(/\.pdf$/i, '') + `(${n}).pdf`; // 存在 → 換名再試
+                    } catch (e) {
+                        if (e.name === 'NotFoundError') break; // 不存在 → 可用
+                        throw e;
+                    }
+                }
+            } catch (_) {}
+            const fileHandle = await saveDirHandle.getFileHandle(target, { create: true });
+            const writable = await fileHandle.createWritable();
+            await writable.write(pdfBytes);
+            await writable.close();
+            return target;
+        }
+
+        // 右下角短暫提示
+        function showToast(msg) {
+            let t = document.getElementById('app-toast');
+            if (!t) {
+                t = document.createElement('div');
+                t.id = 'app-toast';
+                t.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white text-sm font-bold px-4 py-2.5 rounded-lg shadow-xl transition-opacity duration-300';
+                document.body.appendChild(t);
+            }
+            t.textContent = msg;
+            t.style.opacity = '1';
+            clearTimeout(t._timer);
+            t._timer = setTimeout(() => { t.style.opacity = '0'; }, 2800);
+        }
+
         // ==== 導出 PDF ====
         saveBtn.addEventListener('click', async () => {
             if (!currentPdfData) return;
             loadingOverlay.style.display = 'flex';
-            
+
             try {
                 const { pdfBytes, newFileName } = await generatePdfData();
-                download(pdfBytes, newFileName, "application/pdf");
+                // 已設定資料夾 → 直接寫入，不跳下載視窗
+                if (saveDirHandle) {
+                    const saved = await saveToFolder(pdfBytes, newFileName);
+                    if (saved) {
+                        showToast(`✅ 已存入「${saveDirHandle.name}」：${saved}`);
+                    } else {
+                        // 權限被拒 → 退回一般下載
+                        download(pdfBytes, newFileName, "application/pdf");
+                        showToast('資料夾權限已失效，改用一般下載');
+                    }
+                } else {
+                    download(pdfBytes, newFileName, "application/pdf");
+                }
             } catch (error) {
                 console.error(error); alert("儲存失敗，請確認檔案格式是否正確。");
             } finally {
@@ -2110,6 +2255,11 @@
                         title: '簽核文件分享',
                         text: '請查看此簽核完成的 PDF 文件。',
                     });
+                } else if (!isMobile && saveDirHandle) {
+                    // 桌機且已設定資料夾 → 直接寫入
+                    const saved = await saveToFolder(pdfBytes, newFileName);
+                    if (saved) showToast(`✅ 已存入「${saveDirHandle.name}」：${saved}`);
+                    else download(pdfBytes, newFileName, "application/pdf");
                 } else {
                     // 若為電腦版或瀏覽器不支援，則退回一般另存下載
                     download(pdfBytes, newFileName, "application/pdf");
