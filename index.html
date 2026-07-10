@@ -88,6 +88,13 @@
                     <span class="hidden sm:inline">撤銷</span>
                 </button>
 
+                <button id="delete-btn" class="bg-gray-100 hover:bg-red-100 text-gray-600 px-3 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-1 text-sm md:text-base shadow-sm border border-gray-300" disabled title="刪除模式：開啟後點選畫面上的印章/文字即可刪除">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    <span class="hidden sm:inline">刪除</span>
+                </button>
+
                 <button id="share-btn" class="bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-1 text-sm md:text-base shadow-sm" disabled title="分享至 Line/信箱">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
@@ -190,6 +197,17 @@
                     <span class="text-sm text-gray-700 font-medium">存檔自動加日期後綴</span>
                     <label class="relative inline-flex items-center cursor-pointer">
                         <input type="checkbox" id="toggle-date-suffix" class="sr-only peer">
+                        <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
+
+                <!-- 存檔後可再編輯開關 -->
+                <div class="px-5 py-3 flex items-center justify-between bg-white border-b border-gray-100 flex-none">
+                    <span class="text-sm text-gray-700 font-medium" title="開啟：存出的 PDF 日後用本工具再打開時，印章/文字可再撤銷或移動(檔案會略大)。關閉：印章永久壓平、檔案較小。">
+                        存檔後可再編輯 <span class="text-xs text-gray-400">(可還原)</span>
+                    </span>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="toggle-reeditable" class="sr-only peer" checked>
                         <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
                     </label>
                 </div>
@@ -478,6 +496,10 @@
 
     <script>
         const { PDFDocument, rgb, degrees } = PDFLib;
+
+        // 還原機制：另存時把「原始檔＋標註記錄」夾帶進 PDF，日後載入可還原/再編輯
+        const SIDECAR_ORIG = '__stampapp_original.pdf';
+        const SIDECAR_ANNO = '__stampapp_annotations.json';
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
         // 全域狀態
@@ -518,6 +540,7 @@
         let pointerDownX = 0;
         let pointerDownY = 0;
         let isPointerDragging = false;
+        let deleteMode = false; // 刪除模式：點畫面上的標註即可刪除
 
         // 預覽開關狀態
         let isPreviewEnabled = true;
@@ -733,6 +756,19 @@
         toggleDateSuffixBtn.addEventListener('change', (e) => {
             isAppendDateEnabled = e.target.checked;
             localStorage.setItem('append_date', isAppendDateEnabled);
+        });
+
+        // 讀取/儲存「存檔後可再編輯」開關（預設開啟）
+        const toggleReeditableBtn = document.getElementById('toggle-reeditable');
+        let isReEditable = true;
+        const savedReedit = localStorage.getItem('save_reeditable');
+        if (savedReedit !== null) {
+            isReEditable = savedReedit === 'true';
+            toggleReeditableBtn.checked = isReEditable;
+        }
+        toggleReeditableBtn.addEventListener('change', (e) => {
+            isReEditable = e.target.checked;
+            localStorage.setItem('save_reeditable', isReEditable);
         });
 
         textSizeInput.addEventListener('input', (e) => {
@@ -1286,10 +1322,35 @@
             annotations = [];
             displayScale = null; // 更換檔案時，重置縮放比例以適應新檔案
             updateUndoBtn();
+            if (deleteMode) setDeleteMode(false); // 換檔時結束刪除模式
 
-            // 批次預載命中：已畫好的頁直接秒開，沒畫完的部分由背景掃描無縫接手
-            if (prefetchCache && prefetchCache.file === file) {
-                const cache = prefetchCache;
+            // 先取得檔案位元組（優先用預載快取現成的 data）
+            const cache = (prefetchCache && prefetchCache.file === file) ? prefetchCache : null;
+            let fileData;
+            if (cache) {
+                fileData = cache.data;
+            } else {
+                loadingOverlay.style.display = 'flex';
+                fileData = await file.arrayBuffer();
+            }
+
+            // 偵測本工具夾帶的還原資料：有的話載入「可編輯版」（用嵌入原始檔為底稿，印章變回可撤銷/移動）
+            const sidecar = await tryLoadSidecar(fileData);
+            if (sidecar) {
+                prefetchCache = null;
+                prefetchToken++;               // 快取是壓平版，作廢
+                currentPdfData = sidecar.original;
+                annotations = sidecar.annotations;
+                updateUndoBtn();
+                loadingOverlay.style.display = 'flex';
+                await renderPdf(currentPdfData);
+                maybePrefetchNextBatch();
+                showToast('🔄 已載入可編輯版：先前的印章/文字可直接撤銷或移動');
+                return;
+            }
+
+            // 無夾帶 → 一般流程
+            if (cache) {
                 prefetchCache = null;
                 prefetchToken++; // 取消仍在進行的預載迴圈（已畫好的頁照用，不浪費）
                 currentPdfData = cache.data;
@@ -1298,8 +1359,7 @@
                 return;
             }
 
-            loadingOverlay.style.display = 'flex';
-            currentPdfData = await file.arrayBuffer();
+            currentPdfData = fileData;
             await renderPdf(currentPdfData);
         }
 
@@ -1493,6 +1553,7 @@
             editorUi.classList.remove('hidden');
             saveBtn.disabled = false;
             shareBtn.disabled = false;
+            document.getElementById('delete-btn').disabled = false;
             loadingOverlay.style.display = 'none';
 
             // 其餘頁建立佔位符，等背景掃描或滾動到才渲染
@@ -1686,8 +1747,8 @@
                 return;
             }
 
-            // 如果是觸控、畫筆、繪圖中、右鍵拖曳中，皆不顯示游標
-            if (e.pointerType === 'touch' || currentTool === 'pen' || currentTool === 'ai' || isDrawing || isPanning) {
+            // 如果是觸控、刪除模式、畫筆、繪圖中、右鍵拖曳中，皆不顯示游標
+            if (e.pointerType === 'touch' || deleteMode || currentTool === 'pen' || currentTool === 'ai' || isDrawing || isPanning) {
                 hideHoverPreview();
                 return;
             }
@@ -1723,6 +1784,39 @@
             hoverPreview.style.transform = `translate(-50%, -50%) rotate(${rotation}deg)`;
         }
 
+        // ==== 刪除模式：標註點擊命中測試 ====
+        // 回傳標註在 PDF 座標的外接矩形（含容差，方便點選細線）
+        function annoBBox(a) {
+            if (a.type === 'stamp' || a.type === 'text') {
+                const hw = a.width / 2, hh = a.height / 2;
+                return { minX: a.pdfX - hw, maxX: a.pdfX + hw, minY: a.pdfY - hh, maxY: a.pdfY + hh };
+            } else if (a.type === 'path') {
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                for (const p of a.path) {
+                    minX = Math.min(minX, p.pdfX); maxX = Math.max(maxX, p.pdfX);
+                    minY = Math.min(minY, p.pdfY); maxY = Math.max(maxY, p.pdfY);
+                }
+                const t = (a.lineWidth || 3) + 5;
+                return { minX: minX - t, maxX: maxX + t, minY: minY - t, maxY: maxY + t };
+            } else if (a.type === 'rect' || a.type === 'shape') {
+                const minX = Math.min(a.pdfX1, a.pdfX2), maxX = Math.max(a.pdfX1, a.pdfX2);
+                const minY = Math.min(a.pdfY1, a.pdfY2), maxY = Math.max(a.pdfY1, a.pdfY2);
+                const t = (a.lineWidth || 2) + 5;
+                return { minX: minX - t, maxX: maxX + t, minY: minY - t, maxY: maxY + t };
+            }
+            return null;
+        }
+        // 回傳點擊處「最上層」標註在 annotations 中的索引，沒有回傳 -1
+        function hitTestTopAnnotation(pageIndex, pdfX, pdfY) {
+            for (let i = annotations.length - 1; i >= 0; i--) {
+                const a = annotations[i];
+                if (a.pageIndex !== pageIndex) continue;
+                const bb = annoBBox(a);
+                if (bb && pdfX >= bb.minX && pdfX <= bb.maxX && pdfY >= bb.minY && pdfY <= bb.maxY) return i;
+            }
+            return -1;
+        }
+
         // ==== 互動邏輯 (精準座標轉換) ====
         function getEventPdfPoint(e, canvas) {
             const rect = canvas.getBoundingClientRect();
@@ -1752,6 +1846,8 @@
             pointerDownX = e.clientX;
             pointerDownY = e.clientY;
             isPointerDragging = false;
+
+            if (deleteMode) return; // 刪除模式：不畫圖不蓋章，放開時再判定點擊刪除
 
             const canvas = e.target;
             const [pdfX, pdfY] = getEventPdfPoint(e, canvas);
@@ -1789,6 +1885,17 @@
             // 偵測是否發生拖曳 (移動超過 10px 判定為拖曳/平移，取消蓋章意圖)
             if (Math.abs(e.clientX - pointerDownX) > 10 || Math.abs(e.clientY - pointerDownY) > 10) {
                 isPointerDragging = true;
+            }
+
+            // 刪除模式：游標移到可刪除的標註上時變成手指，提示可點擊
+            if (deleteMode) {
+                const canvas = e.target;
+                if (canvas && canvas.tagName === 'CANVAS') {
+                    const [px, py] = getEventPdfPoint(e, canvas);
+                    const over = hitTestTopAnnotation(parseInt(canvas.dataset.pageIndex), px, py) >= 0;
+                    canvas.style.cursor = over ? 'pointer' : 'crosshair';
+                }
+                return;
             }
 
             if (currentTool !== 'pen' || !isDrawing) return;
@@ -1859,6 +1966,23 @@
             }
 
             const canvas = e.target;
+
+            // 刪除模式：點到標註就刪除（放開時判定，避免與拖曳/捲動混淆）
+            if (deleteMode && !isPointerDragging) {
+                hideHoverPreview();
+                const pageIndex = parseInt(canvas.dataset.pageIndex);
+                const [pdfX, pdfY] = getEventPdfPoint(e, canvas);
+                const idx = hitTestTopAnnotation(pageIndex, pdfX, pdfY);
+                if (idx >= 0) {
+                    annotations.splice(idx, 1);
+                    updateUndoBtn();
+                    renderSinglePage(pageIndex + 1); // 重畫該頁，移除被刪的標註
+                    showToast('🗑️ 已刪除 1 個標註');
+                } else {
+                    showToast('沒點到，請點在印章／文字／線條上');
+                }
+                return;
+            }
 
             // 放開時，如果沒有發生拖曳 (單純點擊)，才真正蓋上印章或文字
             if ((currentTool === 'stamp' || currentTool === 'text') && !isPointerDragging) {
@@ -1991,6 +2115,23 @@
             undoBtn.disabled = annotations.length === 0;
         }
 
+        // ==== 刪除模式開關 ====
+        const deleteBtn = document.getElementById('delete-btn');
+        function setDeleteMode(on) {
+            deleteMode = on;
+            if (on) {
+                deleteBtn.classList.remove('bg-gray-100', 'hover:bg-red-100', 'text-gray-600', 'border-gray-300');
+                deleteBtn.classList.add('bg-red-600', 'hover:bg-red-700', 'text-white', 'border-red-600');
+                hideHoverPreview();
+                showToast('🗑️ 刪除模式：點畫面上的印章／文字／線條即可刪除，再按一次結束');
+            } else {
+                deleteBtn.classList.add('bg-gray-100', 'hover:bg-red-100', 'text-gray-600', 'border-gray-300');
+                deleteBtn.classList.remove('bg-red-600', 'hover:bg-red-700', 'text-white', 'border-red-600');
+                document.querySelectorAll('#pdf-container canvas').forEach(c => c.style.cursor = 'crosshair');
+            }
+        }
+        deleteBtn.addEventListener('click', () => setDeleteMode(!deleteMode));
+
         function hexToRgb(hex) {
             let h = hex.replace('#', '');
             if(h.length === 3) h = h.split('').map(c => c+c).join('');
@@ -1998,6 +2139,64 @@
         }
 
         // ==== 共用：產生 PDF 檔案資料與檔名 ====
+        // 讀出 PDF 內夾帶的附件（低階解析 EmbeddedFiles）
+        function readEmbeddedFiles(pdfDoc) {
+            try {
+                const { PDFName, PDFDict, PDFArray, decodePDFRawStream } = PDFLib;
+                const namesDict = pdfDoc.catalog.lookup(PDFName.of('Names'), PDFDict);
+                if (!namesDict) return null;
+                const efDict = namesDict.lookup(PDFName.of('EmbeddedFiles'), PDFDict);
+                if (!efDict) return null;
+                const efNames = efDict.lookup(PDFName.of('Names'), PDFArray);
+                if (!efNames) return null;
+                const out = {};
+                for (let i = 0; i < efNames.size(); i += 2) {
+                    const nameObj = efNames.lookup(i);
+                    const key = nameObj.decodeText ? nameObj.decodeText() : nameObj.asString();
+                    const spec = efNames.lookup(i + 1, PDFDict);
+                    const ef = spec.lookup(PDFName.of('EF'), PDFDict);
+                    const stream = ef.lookup(PDFName.of('F')) || ef.lookup(PDFName.of('UF'));
+                    if (!stream) continue;
+                    out[key] = decodePDFRawStream(stream).decode(); // Uint8Array
+                }
+                return out;
+            } catch (e) {
+                console.warn('讀取夾帶附件失敗', e);
+                return null;
+            }
+        }
+
+        // 在位元組陣列中找 ASCII 子字串（用來快速判斷是否夾帶還原資料，免除昂貴解析）
+        function bytesIncludeAscii(bytes, str) {
+            const needle = []; for (let i = 0; i < str.length; i++) needle.push(str.charCodeAt(i));
+            const n = needle.length, L = bytes.length;
+            outer: for (let i = 0; i + n <= L; i++) {
+                for (let j = 0; j < n; j++) if (bytes[i + j] !== needle[j]) continue outer;
+                return true;
+            }
+            return false;
+        }
+
+        // 偵測本工具的還原資料；有的話回傳 { original, annotations }
+        async function tryLoadSidecar(data) {
+            try {
+                const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+                if (!bytesIncludeAscii(bytes, SIDECAR_ORIG)) return null; // 快速預掃：一般檔直接跳過
+                const doc = await PDFDocument.load(data, { updateMetadata: false });
+                const files = readEmbeddedFiles(doc);
+                if (!files || !files[SIDECAR_ORIG]) return null;
+                const ob = files[SIDECAR_ORIG];
+                const original = ob.buffer.slice(ob.byteOffset, ob.byteOffset + ob.byteLength);
+                let annos = [];
+                if (files[SIDECAR_ANNO]) {
+                    try { annos = JSON.parse(new TextDecoder().decode(files[SIDECAR_ANNO])); } catch (_) {}
+                }
+                return { original, annotations: Array.isArray(annos) ? annos : [] };
+            } catch (e) {
+                return null; // 不是本工具的檔 / 解析失敗 → 當一般 PDF
+            }
+        }
+
         async function generatePdfData() {
             const pdfDoc = await PDFDocument.load(currentPdfData);
             const pages = pdfDoc.getPages();
@@ -2069,8 +2268,28 @@
                 }
             }
 
-            const pdfBytes = await pdfDoc.save();
-            
+            // 夾帶「原始檔＋標註記錄」：對其他 PDF 閱讀器是隱形附件，本工具再次載入時可還原/再編輯
+            // 僅在「存檔後可再編輯」開關開啟時夾帶；關閉則印章永久壓平、檔案較小
+            if (isReEditable) try {
+                const origBytes = currentPdfData instanceof ArrayBuffer
+                    ? currentPdfData.slice(0)
+                    : currentPdfData.buffer.slice(currentPdfData.byteOffset, currentPdfData.byteOffset + currentPdfData.byteLength);
+                await pdfDoc.attach(origBytes, SIDECAR_ORIG, {
+                    mimeType: 'application/pdf',
+                    description: 'stamp-app 原始檔（供還原用，請勿刪除）',
+                });
+                const annoBytes = new TextEncoder().encode(JSON.stringify(annotations));
+                await pdfDoc.attach(annoBytes, SIDECAR_ANNO, {
+                    mimeType: 'application/json',
+                    description: 'stamp-app 標註記錄',
+                });
+            } catch (e) {
+                console.warn('夾帶還原資料失敗（不影響存檔）', e);
+            }
+
+            // 可再編輯時關閉 object streams（讓還原標記維持明文供快速掃描）；否則用預設壓縮讓檔案最小
+            const pdfBytes = await pdfDoc.save({ useObjectStreams: !isReEditable });
+
             let newFileName = `${originalFileName}.pdf`;
             if (isAppendDateEnabled) {
                 const now = new Date();
@@ -2247,7 +2466,7 @@
                 
                 // 檢查是否為行動裝置
                 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-                
+
                 // 行動裝置且支援分享 API 時彈出原生分享 (LINE, Email, WeChat)
                 if (isMobile && navigator.canShare && navigator.canShare({ files: [file] })) {
                     await navigator.share({
@@ -2818,6 +3037,7 @@
             editorUi.classList.remove('hidden');
             saveBtn.disabled = false;
             shareBtn.disabled = false;
+            document.getElementById('delete-btn').disabled = false;
             loadingOverlay.style.display = 'none';
             pdfContainer.scrollTop = 0;
             document.getElementById('page-indicator').classList.remove('hidden');
