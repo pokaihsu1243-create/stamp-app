@@ -430,8 +430,9 @@
 
                         <!-- AI 提供商切換 -->
                         <div class="flex rounded-lg overflow-hidden border border-gray-200 flex-none shadow-sm">
-                            <button id="btn-provider-google" class="flex-1 py-2 text-xs font-bold bg-purple-600 text-white transition">🔮 Google AI</button>
-                            <button id="btn-provider-claude" class="flex-1 py-2 text-xs font-bold bg-white text-orange-600 transition border-l border-gray-200">🤖 Claude AI</button>
+                            <button id="btn-provider-google" class="flex-1 py-2 text-xs font-bold bg-purple-600 text-white transition">🔮 Google</button>
+                            <button id="btn-provider-claude" class="flex-1 py-2 text-xs font-bold bg-white text-orange-600 transition border-l border-gray-200">🤖 Claude</button>
+                            <button id="btn-provider-custom" class="flex-1 py-2 text-xs font-bold bg-white text-teal-600 transition border-l border-gray-200">🔌 其他 API</button>
                         </div>
 
                         <!-- Google AI 區塊 -->
@@ -466,6 +467,46 @@
                                     <option value="claude-opus-4-7">🧠 Claude Opus 4.7 (最強深度分析)</option>
                                     <option value="claude-haiku-4-5-20251001">🚀 Claude Haiku 4.5 (極速查帳)</option>
                                 </select>
+                            </div>
+                        </div>
+
+                        <!-- 其他 API (OpenAI 相容) 區塊 -->
+                        <div id="section-custom-ai" class="space-y-2 flex-none hidden">
+                            <!-- 公司 Groq 金鑰（密碼解鎖） -->
+                            <div class="bg-amber-50 p-3 rounded-lg border border-amber-200 shadow-sm space-y-2">
+                                <div id="groq-locked" class="space-y-2">
+                                    <label class="block text-xs font-bold text-amber-700">🔐 公司 Groq 金鑰（輸入密碼解鎖）</label>
+                                    <div class="flex gap-2">
+                                        <input type="password" id="groq-password" placeholder="解鎖密碼" autocomplete="off" class="flex-1 min-w-0 border border-gray-300 rounded px-2 py-1.5 text-xs focus:ring-2 focus:ring-amber-400 font-mono">
+                                        <button id="btn-groq-unlock" class="flex-none bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-3 rounded transition">解鎖</button>
+                                    </div>
+                                    <label class="flex items-center gap-1 text-[10px] text-amber-700"><input type="checkbox" id="groq-remember" checked> 記住這台裝置</label>
+                                </div>
+                                <div id="groq-unlocked" class="hidden flex items-center justify-between gap-2">
+                                    <span class="text-xs font-bold text-green-700">✅ 已使用公司 Groq 金鑰</span>
+                                    <button id="btn-groq-lock" class="flex-none text-[10px] text-gray-500 hover:text-red-600 underline">鎖上</button>
+                                </div>
+                            </div>
+                            <div id="custom-manual-fields" class="bg-teal-50 p-3 rounded-lg border border-teal-100 shadow-sm space-y-2">
+                                <div>
+                                    <label class="block text-xs font-bold text-teal-700 mb-1">🌐 API 網址 (Base URL)</label>
+                                    <input type="text" id="custom-base-url" placeholder="https://openrouter.ai/api/v1" class="w-full border border-gray-300 rounded px-2 py-1.5 text-xs focus:ring-2 focus:ring-teal-400 font-mono">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-teal-700 mb-1">🔑 API 金鑰</label>
+                                    <input type="password" id="custom-api-key" placeholder="貼上 API 金鑰" class="w-full border border-gray-300 rounded px-2 py-1.5 text-xs focus:ring-2 focus:ring-teal-400 font-mono">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-teal-700 mb-1">🧠 模型名稱</label>
+                                    <input type="text" id="custom-model" placeholder="例：google/gemini-2.0-flash-exp" class="w-full border border-gray-300 rounded px-2 py-1.5 text-xs focus:ring-2 focus:ring-teal-400 font-mono">
+                                </div>
+                                <p class="text-[10px] text-teal-600 leading-relaxed">
+                                    支援任何 <strong>OpenAI 相容</strong>且能<strong>看圖</strong>的 API。<br>
+                                    💡 推薦 <strong>OpenRouter</strong>(一把金鑰用上百個模型)：<br>
+                                    網址填 <code class="bg-white px-1 rounded">https://openrouter.ai/api/v1</code><br>
+                                    模型填 <code class="bg-white px-1 rounded">google/gemini-2.0-flash-exp</code> 等。<br>
+                                    ⚠️ 對方 API 需允許瀏覽器直接呼叫(CORS)。
+                                </p>
                             </div>
                         </div>
 
@@ -584,6 +625,10 @@
         const claudeModelSelect = document.getElementById('claude-model-select');
         const btnProviderGoogle = document.getElementById('btn-provider-google');
         const btnProviderClaude = document.getElementById('btn-provider-claude');
+        const btnProviderCustom = document.getElementById('btn-provider-custom');
+        const customBaseUrlInput = document.getElementById('custom-base-url');
+        const customApiKeyInput = document.getElementById('custom-api-key');
+        const customModelInput = document.getElementById('custom-model');
 
         // ==== AI 抓取模型與連線 ====
         const loadAvailableModels = async (key) => {
@@ -679,6 +724,18 @@
             }
             const savedClaudeKey = localStorage.getItem('claude_key') || '';
             if (savedClaudeKey) claudeApiKeyInput.value = savedClaudeKey;
+
+            // 其他 API（OpenAI 相容）欄位
+            customBaseUrlInput.value = localStorage.getItem('custom_base') || '';
+            customApiKeyInput.value  = localStorage.getItem('custom_key')  || '';
+            customModelInput.value   = localStorage.getItem('custom_model') || '';
+            customBaseUrlInput.addEventListener('input', e => localStorage.setItem('custom_base', e.target.value.trim()));
+            customApiKeyInput.addEventListener('input',  e => localStorage.setItem('custom_key', e.target.value.trim()));
+            customModelInput.addEventListener('input',   e => localStorage.setItem('custom_model', e.target.value.trim()));
+
+            // 還原上次選的提供商
+            const savedProvider = localStorage.getItem('ai_provider');
+            if (savedProvider === 'claude' || savedProvider === 'custom') selectAiProvider(savedProvider);
 
             // 印章顏色
             const savedColor = localStorage.getItem('s_color') || '#1d4ed8';
@@ -854,23 +911,77 @@
         });
 
         // ==== AI 提供商切換 ====
-        btnProviderGoogle.addEventListener('click', () => {
-            currentAiProvider = 'google';
-            document.getElementById('section-google-ai').classList.remove('hidden');
-            document.getElementById('section-claude-ai').classList.add('hidden');
-            btnProviderGoogle.className = 'flex-1 py-2 text-xs font-bold bg-purple-600 text-white transition';
-            btnProviderClaude.className = 'flex-1 py-2 text-xs font-bold bg-white text-orange-600 transition border-l border-gray-200';
-            document.getElementById('btn-ai-audit').className = 'w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold py-3 px-4 rounded-xl transition shadow-md flex items-center justify-center gap-2 flex-none';
-        });
+        function selectAiProvider(name) {
+            currentAiProvider = name;
+            document.getElementById('section-google-ai').classList.toggle('hidden', name !== 'google');
+            document.getElementById('section-claude-ai').classList.toggle('hidden', name !== 'claude');
+            document.getElementById('section-custom-ai').classList.toggle('hidden', name !== 'custom');
 
-        btnProviderClaude.addEventListener('click', () => {
-            currentAiProvider = 'claude';
-            document.getElementById('section-google-ai').classList.add('hidden');
-            document.getElementById('section-claude-ai').classList.remove('hidden');
-            btnProviderClaude.className = 'flex-1 py-2 text-xs font-bold bg-orange-500 text-white transition border-l border-gray-200';
-            btnProviderGoogle.className = 'flex-1 py-2 text-xs font-bold bg-white text-purple-600 transition';
-            document.getElementById('btn-ai-audit').className = 'w-full bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold py-3 px-4 rounded-xl transition shadow-md flex items-center justify-center gap-2 flex-none';
+            const inactive = 'flex-1 py-2 text-xs font-bold bg-white transition';
+            btnProviderGoogle.className = (name === 'google' ? 'flex-1 py-2 text-xs font-bold bg-purple-600 text-white transition' : inactive + ' text-purple-600');
+            btnProviderClaude.className = (name === 'claude' ? 'flex-1 py-2 text-xs font-bold bg-orange-500 text-white transition border-l border-gray-200' : inactive + ' text-orange-600 border-l border-gray-200');
+            btnProviderCustom.className = (name === 'custom' ? 'flex-1 py-2 text-xs font-bold bg-teal-600 text-white transition border-l border-gray-200' : inactive + ' text-teal-600 border-l border-gray-200');
+
+            const auditBtn = document.getElementById('btn-ai-audit');
+            if (name === 'claude') {
+                auditBtn.className = 'w-full bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold py-3 px-4 rounded-xl transition shadow-md flex items-center justify-center gap-2 flex-none';
+            } else if (name === 'custom') {
+                auditBtn.className = 'w-full bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white font-bold py-3 px-4 rounded-xl transition shadow-md flex items-center justify-center gap-2 flex-none';
+            } else {
+                auditBtn.className = 'w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold py-3 px-4 rounded-xl transition shadow-md flex items-center justify-center gap-2 flex-none';
+            }
+            localStorage.setItem('ai_provider', name);
+        }
+        btnProviderGoogle.addEventListener('click', () => selectAiProvider('google'));
+        btnProviderClaude.addEventListener('click', () => selectAiProvider('claude'));
+        btnProviderCustom.addEventListener('click', () => selectAiProvider('custom'));
+
+        // ==== 公司 Groq 金鑰（AES-GCM 加密，密碼解鎖）====
+        // 金鑰以 PBKDF2(60萬次)+AES-GCM 加密後才放在這裡；重新產生用 .secret/encrypt-key.js（不進 git）
+        const GROQ_VAULT = {"salt":"F3G2V5CYpTlCPTImIzvkiw==","iv":"FPgy0zkMgCA69IUV","ct":"BC69MkVuptIXj2OoaLIUPysSBTLJGb2l4qX3wXjxM8k6rJLckaUMQqVFOmr849S9lUv5XuDHv968XFz5WV6C5SmSp+yBJeJE","iter":600000};
+        const GROQ_BASE = 'https://api.groq.com/openai/v1';
+        const GROQ_MODEL = 'qwen/qwen3.8-27b';
+        const GROQ_MAX_IMAGES = 2; // 模型上限 3 張，但免費額度每分鐘 7000 tokens，3 頁一批就爆，故每批 2 頁
+        let groqKey = localStorage.getItem('groq_company_key') || '';
+
+        async function decryptGroqKey(password) {
+            const b = s => Uint8Array.from(atob(s), ch => ch.charCodeAt(0));
+            const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
+            const k = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b(GROQ_VAULT.salt), iterations: GROQ_VAULT.iter, hash: 'SHA-256' },
+                base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+            const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b(GROQ_VAULT.iv) }, k, b(GROQ_VAULT.ct));
+            return new TextDecoder().decode(pt);
+        }
+        function refreshGroqUi() {
+            document.getElementById('groq-locked').classList.toggle('hidden', !!groqKey);
+            document.getElementById('groq-unlocked').classList.toggle('hidden', !groqKey);
+            document.getElementById('custom-manual-fields').classList.toggle('hidden', !!groqKey);
+        }
+        async function unlockGroq() {
+            const pwInput = document.getElementById('groq-password');
+            const btn = document.getElementById('btn-groq-unlock');
+            const pw = pwInput.value.trim().toUpperCase();
+            if (!pw) return;
+            btn.disabled = true; btn.textContent = '…';
+            try {
+                groqKey = await decryptGroqKey(pw);
+                if (document.getElementById('groq-remember').checked) localStorage.setItem('groq_company_key', groqKey);
+                pwInput.value = '';
+                refreshGroqUi();
+            } catch (e) {
+                alert('❌ 密碼錯誤');
+            } finally {
+                btn.disabled = false; btn.textContent = '解鎖';
+            }
+        }
+        document.getElementById('btn-groq-unlock').addEventListener('click', unlockGroq);
+        document.getElementById('groq-password').addEventListener('keydown', e => { if (e.key === 'Enter') unlockGroq(); });
+        document.getElementById('btn-groq-lock').addEventListener('click', () => {
+            groqKey = '';
+            localStorage.removeItem('groq_company_key');
+            refreshGroqUi();
         });
+        refreshGroqUi();
 
         // ==== Claude AI 審計師 System Prompt ====
         const CLAUDE_SYSTEM_PROMPT = `# Role: 資深會計表單核對與審計專員
@@ -976,6 +1087,93 @@
                     const rawText = data.content[0].text;
                     aiResultBox.innerHTML = rawText
                         .replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-700">$1</strong>')
+                        .replace(/🟢/g, '<span class="text-green-600">🟢</span>')
+                        .replace(/🔴/g, '<span class="text-red-600">🔴</span>')
+                        .replace(/🟡/g, '<span class="text-yellow-600">🟡</span>')
+                        .replace(/💡/g, '<span class="text-blue-600">💡</span>');
+
+                } else if (currentAiProvider === 'custom') {
+                    // ---- 其他 API (OpenAI 相容) 路徑 ----
+                    const useGroq = !!groqKey;
+                    const base = useGroq ? GROQ_BASE : customBaseUrlInput.value.trim();
+                    const key = useGroq ? groqKey : customApiKeyInput.value.trim();
+                    const model = useGroq ? GROQ_MODEL : customModelInput.value.trim();
+                    if (!base || !key || !model) { alert('⚠️ 請完整填寫 API 網址、金鑰與模型名稱！'); return; }
+
+                    let url = base.replace(/\/+$/, '');
+                    if (!/\/chat\/completions$/.test(url)) url += '/chat/completions';
+
+                    aiResultBox.innerHTML = `<div class="text-center text-teal-500 mt-10 animate-pulse">🤖 正在將畫面傳送至${useGroq ? ' Groq' : '自訂 API'}...<br>這可能需要幾秒鐘的時間。</div>`;
+
+                    const images = await extractPageImages();
+                    const callApi = async (imgs, label) => {
+                        // 免費額度每分鐘上限（429）：依對方指示秒數倒數後自動重送，最多 5 次
+                        for (let attempt = 0; ; attempt++) {
+                            try {
+                                return await callApiOnce(imgs, label);
+                            } catch (e) {
+                                const wait = /try again in (?:(\d+)m)?([\d.]+)s/i.exec(e.message);
+                                const tooBig = /Limit (\d+), Used \d+, Requested (\d+)/.exec(e.message);
+                                if (!e.rateLimited || !wait || attempt >= 5 || (tooBig && +tooBig[2] > +tooBig[1])) throw e;
+                                let sec = Math.ceil((+(wait[1] || 0)) * 60 + (+wait[2])) + 2;
+                                for (; sec > 0; sec--) {
+                                    aiResultBox.innerHTML = `<div class="text-center text-amber-600 mt-10">⏳ 已達每分鐘用量上限（${label}）<br>${sec} 秒後自動續傳...</div>`;
+                                    await new Promise(r => setTimeout(r, 1000));
+                                }
+                            }
+                        }
+                    };
+                    const callApiOnce = async (imgs, label) => {
+                        const content = [{ type: 'text', text: `請依照您的審計專員角色，嚴格核對以下${label}的會計單據：` }];
+                        for (const imgData of imgs) {
+                            content.push({ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + imgData } });
+                        }
+                        const res = await fetch(url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+                            body: JSON.stringify({
+                                model: model,
+                                max_tokens: 4096,
+                                messages: [
+                                    { role: 'system', content: CLAUDE_SYSTEM_PROMPT },
+                                    { role: 'user', content: content }
+                                ]
+                            })
+                        });
+                        const data = await res.json();
+                        if (!res.ok) {
+                            const em = data.error?.message || (typeof data.error === 'string' ? data.error : '') || `API 錯誤 (${res.status})`;
+                            const err = new Error(em);
+                            err.rateLimited = res.status === 429;
+                            throw err;
+                        }
+                        const text =data.choices?.[0]?.message?.content;
+                        if (!text) throw new Error('API 無回應內容（可能該模型不支援看圖，或回應格式不相容）');
+                        return text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+                    };
+
+                    // 模型有張數上限時分批送（Groq 固定 3 張；其他 API 依錯誤訊息自動偵測）
+                    const runBatches = async (size) => {
+                        if (images.length <= size) return await callApi(images, '所有頁面');
+                        const parts = [];
+                        for (let i = 0; i < images.length; i += size) {
+                            const from = i + 1, to = Math.min(i + size, images.length);
+                            aiResultBox.innerHTML = `<div class="text-center text-teal-500 mt-10 animate-pulse">🤖 分批查帳中：第 ${from}～${to} 頁 / 共 ${images.length} 頁...</div>`;
+                            parts.push(`📄 第 ${from}～${to} 頁\n` + await callApi(images.slice(i, to), `第 ${from}～${to} 頁`));
+                        }
+                        return parts.join('\n\n────────────\n\n');
+                    };
+                    let rawText;
+                    try {
+                        rawText = await runBatches(useGroq ? GROQ_MAX_IMAGES : images.length);
+                    } catch (e) {
+                        const m = /up to (\d+) images?/i.exec(e.message);
+                        if (!m) throw e;
+                        rawText = await runBatches(+m[1]);
+                    }
+
+                    aiResultBox.innerHTML = rawText
+                        .replace(/\*\*(.*?)\*\*/g, '<strong class="text-teal-700">$1</strong>')
                         .replace(/🟢/g, '<span class="text-green-600">🟢</span>')
                         .replace(/🔴/g, '<span class="text-red-600">🔴</span>')
                         .replace(/🟡/g, '<span class="text-yellow-600">🟡</span>')

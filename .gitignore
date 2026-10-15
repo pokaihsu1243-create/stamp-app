@@ -13,3 +13,6 @@ capacitor.config.json
 _check*.js
 _tmp*.js
 *.log
+
+# 金鑰與密碼（絕不可上傳）
+.secret/
