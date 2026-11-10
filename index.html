@@ -246,11 +246,19 @@
                         </div>
 
                         <!-- 共用：顏色 / 大小 / 旋轉 -->
-                        <div class="flex gap-3">
-                            <div class="flex-none">
-                                <label class="block text-sm font-semibold text-gray-700 mb-1">顏色：</label>
-                                <input type="color" id="stamp-color" value="#1d4ed8" class="w-12 h-10 rounded cursor-pointer border border-gray-300 p-0.5">
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1">顏色：</label>
+                            <div id="stamp-color-swatches" class="flex gap-1.5">
+                                <button type="button" data-color="#1d4ed8" class="stamp-swatch flex-1 flex items-center justify-center gap-1 py-1.5 rounded border-2 text-xs font-bold bg-white"><span class="w-3.5 h-3.5 rounded-full" style="background:#1d4ed8"></span>藍</button>
+                                <button type="button" data-color="#cc0000" class="stamp-swatch flex-1 flex items-center justify-center gap-1 py-1.5 rounded border-2 text-xs font-bold bg-white"><span class="w-3.5 h-3.5 rounded-full" style="background:#cc0000"></span>紅</button>
+                                <button type="button" data-color="#1a1a1a" class="stamp-swatch flex-1 flex items-center justify-center gap-1 py-1.5 rounded border-2 text-xs font-bold bg-white"><span class="w-3.5 h-3.5 rounded-full" style="background:#1a1a1a"></span>黑</button>
+                                <label id="stamp-color-custom" title="自己調色" class="relative flex-1 flex items-center justify-center gap-1 py-1.5 rounded border-2 text-xs font-bold bg-white cursor-pointer">
+                                    <span id="stamp-color-custom-dot" class="w-3.5 h-3.5 rounded-full border border-gray-300" style="background:conic-gradient(red,yellow,lime,cyan,blue,magenta,red)"></span>自訂
+                                    <input type="color" id="stamp-color" value="#1d4ed8" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+                                </label>
                             </div>
+                        </div>
+                        <div class="flex gap-3">
                             <div class="flex-1">
                                 <label class="block text-sm font-semibold text-gray-700 mb-1">大小：<span id="stamp-size-label" class="text-blue-600">80</span></label>
                                 <input type="range" id="stamp-size" min="30" max="200" value="80" class="w-full accent-blue-600 mt-2">
@@ -527,10 +535,10 @@
             <!-- 【排版修復】這裡的 min-h-0 是最重要的，它確保了內容不會撐爆這個 flex-1 容器，而是會在區域內正常顯示垂直滾動條！ -->
             <div class="flex-1 overflow-auto bg-gray-300 p-2 md:p-6 order-1 lg:order-2 min-h-0 relative" id="pdf-container">
                 <!-- PDF Canvases will be injected here -->
-                <!-- 頁碼顯示 -->
-                <div id="page-indicator" class="hidden fixed bottom-4 right-4 lg:bottom-6 lg:right-6 z-30 bg-black bg-opacity-60 text-white text-xs font-bold px-3 py-1.5 rounded-full pointer-events-none select-none shadow-lg">1 / 1</div>
-                <div id="render-progress" class="hidden fixed bottom-12 right-4 lg:bottom-16 lg:right-6 z-30 bg-amber-500 bg-opacity-90 text-white text-xs font-bold px-3 py-1.5 rounded-full pointer-events-none select-none shadow-lg">背景讀取中…</div>
             </div>
+            <!-- 頁碼／背景讀取標示：不可放在 pdf-container 裡，開新 PDF 時 pdfContainer.innerHTML='' 會把它們一起清掉 -->
+            <div id="page-indicator" class="hidden fixed bottom-4 right-4 lg:bottom-6 lg:right-6 z-30 bg-black bg-opacity-60 text-white text-xs font-bold px-3 py-1.5 rounded-full pointer-events-none select-none shadow-lg">1 / 1</div>
+            <div id="render-progress" class="hidden fixed bottom-12 right-4 lg:bottom-16 lg:right-6 z-30 bg-amber-500 bg-opacity-90 text-white text-xs font-bold px-3 py-1.5 rounded-full pointer-events-none select-none shadow-lg">背景讀取中…</div>
 
         </div>
     </main>
@@ -796,8 +804,37 @@
         document.getElementById('stamp-date').addEventListener('change', () => generateStampImage());
         document.getElementById('stamp-color').addEventListener('input', (e) => {
             saveToStorage('s_color', e.target.value);
+            syncColorSwatches();
             generateStampImage();
         });
+
+        // 常用印泥色（藍／紅／黑）快選；不在這三色裡就亮「自訂」
+        function syncColorSwatches() {
+            const cur = document.getElementById('stamp-color').value.toLowerCase();
+            let matched = false;
+            document.querySelectorAll('.stamp-swatch').forEach(btn => {
+                const on = btn.dataset.color.toLowerCase() === cur;
+                matched = matched || on;
+                btn.classList.toggle('border-blue-500', on);
+                btn.classList.toggle('bg-blue-50', on);
+                btn.classList.toggle('border-gray-200', !on);
+            });
+            const custom = document.getElementById('stamp-color-custom');
+            custom.classList.toggle('border-blue-500', !matched);
+            custom.classList.toggle('bg-blue-50', !matched);
+            custom.classList.toggle('border-gray-200', matched);
+            document.getElementById('stamp-color-custom-dot').style.background =
+                matched ? 'conic-gradient(red,yellow,lime,cyan,blue,magenta,red)' : cur;
+        }
+        document.querySelectorAll('.stamp-swatch').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.getElementById('stamp-color').value = btn.dataset.color;
+                saveToStorage('s_color', btn.dataset.color);
+                syncColorSwatches();
+                generateStampImage();
+            });
+        });
+        syncColorSwatches();
         
         togglePreviewBtn.addEventListener('change', (e) => {
             isPreviewEnabled = e.target.checked;
@@ -1230,9 +1267,19 @@
 
         // ==== 產生影像（依樣式分流） ====
         function generateStampImage() {
-            if (currentStampStyle === 'dept') generateDeptStampImage();
-            else if (currentStampStyle === 'rect') generateRectStampImage();
-            else generateCircleStampImage();
+            const draw = () => {
+                if (currentStampStyle === 'dept') generateDeptStampImage();
+                else if (currentStampStyle === 'rect') generateRectStampImage();
+                else generateCircleStampImage();
+            };
+            draw();
+            // 印章字型（Noto Serif TC）是網路字型、按字分批下載；字還沒到就先畫會變成替代字型，到了再重畫一次
+            const txt = [stampNameInput.value, document.getElementById('dept-name').value,
+                         document.getElementById('dept-person').value, document.getElementById('rect-stamp-name').value].join('');
+            const f = 'bold 40px "Noto Serif TC"';
+            if (txt && document.fonts && !document.fonts.check(f, txt)) {
+                document.fonts.load(f, txt).then(draw).catch(() => {});
+            }
         }
 
         // 輔助：計算文字方框四個角落，確保全部在圓內（安全半徑 safeR）
@@ -2747,14 +2794,16 @@
             const rn = localStorage.getItem('rect_stamp_name');
             const rb = localStorage.getItem('rect_border_width');
             const ra = localStorage.getItem('rect_aspect_ratio');
-            if (dn) document.getElementById('dept-name').value = dn;
-            if (dp) document.getElementById('dept-person').value = dp;
-            if (rn) document.getElementById('rect-stamp-name').value = rn;
+            if (dn !== null) document.getElementById('dept-name').value = dn;
+            if (dp !== null) document.getElementById('dept-person').value = dp;
+            if (rn !== null) document.getElementById('rect-stamp-name').value = rn;
             if (rb) { document.getElementById('rect-border-width').value = rb; document.getElementById('rect-border-label').textContent = rb; }
             if (ra) {
                 document.getElementById('rect-aspect-ratio').value = ra;
                 document.getElementById('rect-ratio-label').textContent = (parseInt(ra)/10).toFixed(1) + ' : 1';
             }
+            // 頁面一開始已用 HTML 預設值畫過一次章，欄位還原後要重畫，否則蓋出去的還是預設名字
+            generateStampImage();
         })();
 
         // 部門章欄位監聽
@@ -2821,6 +2870,14 @@
             if (p.deptDate)   document.getElementById('dept-date').value = p.deptDate;
             if (p.rectName)   document.getElementById('rect-stamp-name').value = p.rectName;
             if (p.rectBorder) { document.getElementById('rect-border-width').value = p.rectBorder; document.getElementById('rect-border-label').textContent = p.rectBorder; }
+            // 套用後一併記住，下次打開維持這組
+            const keep = {
+                s_color: p.color, s_size: p.size, s_rotation: p.rotation, s_name: p.name,
+                dept_name: p.deptName, dept_person: p.deptPerson,
+                rect_stamp_name: p.rectName, rect_border_width: p.rectBorder,
+            };
+            Object.entries(keep).forEach(([k, v]) => { if (v) localStorage.setItem(k, v); });
+            syncColorSwatches();
             if (p.style) setStampStyle(p.style);
             else generateStampImage();
         }
