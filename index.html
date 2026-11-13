@@ -237,6 +237,8 @@
                                     class="flex-1 py-1.5 text-xs font-bold rounded border-2 border-gray-200 bg-white text-gray-600">🏢 部門章</button>
                                 <button id="style-btn-rect" onclick="setStampStyle('rect')"
                                     class="flex-1 py-1.5 text-xs font-bold rounded border-2 border-gray-200 bg-white text-gray-600">▭ 方章</button>
+                                <button id="style-btn-sign" onclick="setStampStyle('sign')"
+                                    class="flex-1 py-1.5 text-xs font-bold rounded border-2 border-gray-200 bg-white text-gray-600">✍️ 簽名</button>
                             </div>
                         </div>
 
@@ -321,6 +323,14 @@
                                 <label class="block text-sm font-semibold text-gray-700 mb-1">長寬比例：<span id="rect-ratio-label" class="text-blue-600">2.0 : 1</span></label>
                                 <input type="range" id="rect-aspect-ratio" min="10" max="40" value="20" step="1" class="w-full accent-blue-600">
                             </div>
+                        </div>
+
+                        <!-- 樣式四：手寫簽名 -->
+                        <div id="stamp-fields-sign" class="space-y-2 hidden">
+                            <label class="block text-sm font-semibold text-gray-700">我的簽名（點一個來用）：</label>
+                            <div id="sign-list" class="grid grid-cols-2 gap-2"></div>
+                            <button type="button" onclick="openSignPad()" class="w-full py-2 rounded border-2 border-dashed border-blue-300 text-blue-700 text-sm font-bold hover:bg-blue-50 transition">＋ 新增手寫簽名</button>
+                            <p class="text-[11px] text-gray-500 leading-relaxed">選好簽名後，在 PDF 上點一下就會蓋上去（和印章一樣）。簽名存在這台裝置的瀏覽器裡，下次打開還在。</p>
                         </div>
                     </div>
 
@@ -543,6 +553,27 @@
 
         </div>
     </main>
+
+    <!-- 手寫簽名板 -->
+    <div id="sign-pad-modal" class="hidden fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-xl p-4 space-y-3">
+            <div class="flex items-center justify-between">
+                <h3 class="font-bold text-gray-800">✍️ 新增手寫簽名</h3>
+                <button type="button" onclick="closeSignPad()" class="text-gray-400 hover:text-gray-700 text-xl leading-none">✕</button>
+            </div>
+            <p class="text-xs text-gray-500">在下面框內用滑鼠、手指或觸控筆簽名。</p>
+            <canvas id="sign-pad" width="1200" height="480" class="w-full bg-white border-2 border-dashed border-gray-300 rounded-lg cursor-crosshair" style="touch-action:none; aspect-ratio: 5 / 2;"></canvas>
+            <div class="flex items-center gap-2 text-xs text-gray-600">
+                <span class="flex-none">筆粗：</span>
+                <input type="range" id="sign-pen-width" min="2" max="14" value="6" class="flex-1 accent-blue-600">
+            </div>
+            <div class="flex gap-2">
+                <button type="button" onclick="clearSignPad()" class="flex-1 py-2 rounded border border-gray-300 text-sm font-bold text-gray-600 hover:bg-gray-50">重寫</button>
+                <button type="button" onclick="closeSignPad()" class="flex-1 py-2 rounded border border-gray-300 text-sm font-bold text-gray-600 hover:bg-gray-50">取消</button>
+                <button type="button" onclick="saveSignPad()" class="flex-1 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold">儲存簽名</button>
+            </div>
+        </div>
+    </div>
 
     <script>
         const { PDFDocument, rgb, degrees } = PDFLib;
@@ -1267,6 +1298,7 @@
             const draw = () => {
                 if (currentStampStyle === 'dept') generateDeptStampImage();
                 else if (currentStampStyle === 'rect') generateRectStampImage();
+                else if (currentStampStyle === 'sign') generateSignStampImage();
                 else generateCircleStampImage();
             };
             draw();
@@ -1514,6 +1546,169 @@
 
             stampImgBase64 = canvas.toDataURL('image/png');
             updateStampPreviewSize();
+        }
+
+        // --- 樣式四：手寫簽名（存成透明底筆跡，蓋出時套用目前選的顏色）---
+        const signImgCache = {};
+        function getSignatures() {
+            try { return JSON.parse(localStorage.getItem('signatures') || '[]'); } catch (_) { return []; }
+        }
+        function getSelectedSignature() {
+            const list = getSignatures();
+            return list.find(s => s.id === localStorage.getItem('sign_selected')) || list[0] || null;
+        }
+        function generateSignStampImage() {
+            const color  = document.getElementById('stamp-color').value || '#1a1a1a';
+            const canvas = document.getElementById('stamp-template');
+            const ctx    = canvas.getContext('2d');
+            canvas.style.borderRadius = '4px';
+            const sig = getSelectedSignature();
+            let img = sig && signImgCache[sig.id];
+            if (sig && !img) {
+                img = signImgCache[sig.id] = new Image();
+                img.onload = () => { if (currentStampStyle === 'sign') generateStampImage(); };
+                img.src = sig.img;
+            }
+            if (!sig || !img.complete || !img.naturalWidth) {
+                // 還沒有簽名：預覽顯示提示，stampImgBase64 清空讓蓋章時跳提醒
+                stampAspectRatio = 2;
+                canvas.width = 400; canvas.height = 200;
+                ctx.clearRect(0, 0, 400, 200);
+                ctx.fillStyle = '#9ca3af'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.font = 'bold 40px sans-serif';
+                ctx.fillText(sig ? '載入中…' : '尚未新增簽名', 200, 100);
+                stampImgBase64 = '';
+                updateStampPreviewSize();
+                return;
+            }
+            const CH = 200;
+            const ratio = img.naturalWidth / img.naturalHeight;
+            const CW = Math.max(1, Math.round(CH * ratio));
+            stampAspectRatio = ratio;
+            canvas.width = CW; canvas.height = CH;
+            ctx.clearRect(0, 0, CW, CH);
+            ctx.drawImage(img, 0, 0, CW, CH);
+            ctx.globalCompositeOperation = 'source-in'; // 只把筆跡染成印章顏色
+            ctx.fillStyle = color;
+            ctx.fillRect(0, 0, CW, CH);
+            ctx.globalCompositeOperation = 'source-over';
+            stampImgBase64 = canvas.toDataURL('image/png');
+            updateStampPreviewSize();
+        }
+
+        function renderSignList() {
+            const list = getSignatures();
+            const sel = getSelectedSignature();
+            const box = document.getElementById('sign-list');
+            if (!list.length) {
+                box.innerHTML = '<div class="col-span-2 text-xs text-gray-400 italic text-center py-2">還沒有簽名，按下方「新增手寫簽名」</div>';
+                return;
+            }
+            box.innerHTML = list.map(s => `
+                <div onclick="selectSignature('${s.id}')" class="relative cursor-pointer bg-white rounded border-2 ${sel && sel.id === s.id ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200 hover:border-blue-300'} p-1 h-14 flex items-center justify-center">
+                    <img src="${s.img}" class="max-h-full max-w-full object-contain" alt="簽名">
+                    <button type="button" onclick="deleteSignature('${s.id}', event)" title="刪除這個簽名" class="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-white border border-gray-300 text-gray-500 hover:text-red-600 hover:border-red-400 text-xs leading-none shadow">✕</button>
+                </div>`).join('');
+        }
+        function selectSignature(id) {
+            localStorage.setItem('sign_selected', id);
+            renderSignList();
+            if (currentStampStyle !== 'sign') setStampStyle('sign'); else generateStampImage();
+        }
+        function deleteSignature(id, e) {
+            e.stopPropagation();
+            if (!confirm('確定刪除這個簽名？')) return;
+            localStorage.setItem('signatures', JSON.stringify(getSignatures().filter(s => s.id !== id)));
+            delete signImgCache[id];
+            if (localStorage.getItem('sign_selected') === id) localStorage.removeItem('sign_selected');
+            renderSignList();
+            generateStampImage();
+        }
+
+        // 簽名板
+        const signPad = document.getElementById('sign-pad');
+        const signCtx = signPad.getContext('2d');
+        let signDrawing = false, signHasInk = false, signLast = null;
+        function openSignPad() {
+            clearSignPad();
+            document.getElementById('sign-pad-modal').classList.remove('hidden');
+        }
+        function closeSignPad() {
+            document.getElementById('sign-pad-modal').classList.add('hidden');
+        }
+        function clearSignPad() {
+            signCtx.clearRect(0, 0, signPad.width, signPad.height);
+            signHasInk = false;
+        }
+        function signPoint(e) {
+            const r = signPad.getBoundingClientRect();
+            return { x: (e.clientX - r.left) * signPad.width / r.width, y: (e.clientY - r.top) * signPad.height / r.height };
+        }
+        signPad.addEventListener('pointerdown', e => {
+            e.preventDefault();
+            try { signPad.setPointerCapture(e.pointerId); } catch (_) {}
+            signDrawing = true;
+            signLast = signPoint(e);
+            const scale = signPad.width / signPad.getBoundingClientRect().width;
+            signCtx.lineWidth = parseInt(document.getElementById('sign-pen-width').value) * scale;
+            signCtx.lineCap = 'round'; signCtx.lineJoin = 'round'; signCtx.strokeStyle = '#000';
+            signCtx.beginPath(); signCtx.arc(signLast.x, signLast.y, signCtx.lineWidth / 2, 0, Math.PI * 2);
+            signCtx.fillStyle = '#000'; signCtx.fill();
+            signHasInk = true;
+        });
+        signPad.addEventListener('pointermove', e => {
+            if (!signDrawing) return;
+            const p = signPoint(e);
+            const mid = { x: (signLast.x + p.x) / 2, y: (signLast.y + p.y) / 2 };
+            signCtx.beginPath();
+            signCtx.moveTo(signLast.mx ?? signLast.x, signLast.my ?? signLast.y);
+            signCtx.quadraticCurveTo(signLast.x, signLast.y, mid.x, mid.y); // 平滑筆跡
+            signCtx.stroke();
+            signLast = { x: p.x, y: p.y, mx: mid.x, my: mid.y };
+        });
+        ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => signPad.addEventListener(t, () => {
+            // 平滑曲線只畫到前一段的中點，收筆時把最後半段補上
+            if (signDrawing && signLast && signLast.mx !== undefined) {
+                signCtx.beginPath();
+                signCtx.moveTo(signLast.mx, signLast.my);
+                signCtx.lineTo(signLast.x, signLast.y);
+                signCtx.stroke();
+            }
+            signDrawing = false;
+        }));
+
+        function saveSignPad() {
+            if (!signHasInk) { alert('請先在框內簽名'); return; }
+            // 裁掉空白，只留筆跡範圍
+            const { width: W, height: H } = signPad;
+            const data = signCtx.getImageData(0, 0, W, H).data;
+            let x0 = W, y0 = H, x1 = -1, y1 = -1;
+            for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+                if (data[(y * W + x) * 4 + 3] > 10) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+            }
+            if (x1 < 0) { alert('請先在框內簽名'); return; }
+            const pad = 12;
+            x0 = Math.max(0, x0 - pad); y0 = Math.max(0, y0 - pad);
+            x1 = Math.min(W - 1, x1 + pad); y1 = Math.min(H - 1, y1 + pad);
+            const cw = x1 - x0 + 1, ch = y1 - y0 + 1;
+            const k = Math.min(1, 300 / ch); // 存檔高度最多 300px，避免占太多空間
+            const out = document.createElement('canvas');
+            out.width = Math.round(cw * k); out.height = Math.round(ch * k);
+            out.getContext('2d').drawImage(signPad, x0, y0, cw, ch, 0, 0, out.width, out.height);
+            const id = 'sig' + Date.now();
+            const list = getSignatures();
+            list.push({ id, img: out.toDataURL('image/png') });
+            try {
+                localStorage.setItem('signatures', JSON.stringify(list));
+            } catch (_) {
+                alert('❌ 瀏覽器儲存空間不足，請先刪除幾個舊簽名');
+                return;
+            }
+            localStorage.setItem('sign_selected', id);
+            closeSignPad();
+            renderSignList();
+            setStampStyle('sign');
+            showToast('✅ 簽名已儲存，點 PDF 就能蓋上');
         }
 
         function updateTextPreview() {
@@ -2007,6 +2202,7 @@
             let rotation = 0;
 
             if (currentTool === 'stamp') {
+                if (!stampImgBase64) { hoverPreview.style.display = 'none'; return; }
                 hoverPreview.src = stampImgBase64;
                 const size = parseInt(stampSizeInput.value);
                 const displayH = size * RENDER_SCALE * scaleX;
@@ -2232,6 +2428,7 @@
                 const [pdfX, pdfY] = getEventPdfPoint(e, canvas);
 
                 if (currentTool === 'stamp') {
+                    if (!stampImgBase64) { showToast('請先在左邊「✍️ 簽名」新增或選一個簽名'); return; }
                     const size = parseInt(stampSizeInput.value);
                     const rotation = parseInt(stampRotationInput.value) || 0;
                     annotations.push({
@@ -2748,7 +2945,7 @@
             currentStampStyle = style;
             localStorage.setItem('stamp_style', style);
             // 按鈕 active 狀態
-            ['circle','dept','rect'].forEach(s => {
+            ['circle','dept','rect','sign'].forEach(s => {
                 document.getElementById(`style-btn-${s}`).className =
                     s === style
                     ? 'flex-1 py-1.5 text-xs font-bold rounded border-2 border-blue-400 bg-blue-50 text-blue-700'
@@ -2758,8 +2955,9 @@
             document.getElementById('stamp-fields-circle').classList.toggle('hidden', style !== 'circle');
             document.getElementById('stamp-fields-dept').classList.toggle('hidden',   style !== 'dept');
             document.getElementById('stamp-fields-rect').classList.toggle('hidden',   style !== 'rect');
+            document.getElementById('stamp-fields-sign').classList.toggle('hidden',   style !== 'sign');
             // canvas 圓角
-            document.getElementById('stamp-template').style.borderRadius = style === 'rect' ? '4px' : '50%';
+            document.getElementById('stamp-template').style.borderRadius = (style === 'rect' || style === 'sign') ? '4px' : '50%';
             generateStampImage();
         }
 
@@ -2767,7 +2965,7 @@
         (function initStampStyle() {
             const saved = localStorage.getItem('stamp_style') || 'circle';
             currentStampStyle = saved;
-            ['circle','dept','rect'].forEach(s => {
+            ['circle','dept','rect','sign'].forEach(s => {
                 const btn = document.getElementById(`style-btn-${s}`);
                 if (!btn) return;
                 btn.className = s === saved
@@ -2777,7 +2975,8 @@
             document.getElementById('stamp-fields-circle').classList.toggle('hidden', saved !== 'circle');
             document.getElementById('stamp-fields-dept').classList.toggle('hidden',   saved !== 'dept');
             document.getElementById('stamp-fields-rect').classList.toggle('hidden',   saved !== 'rect');
-            document.getElementById('stamp-template').style.borderRadius = saved === 'rect' ? '4px' : '50%';
+            document.getElementById('stamp-fields-sign').classList.toggle('hidden',   saved !== 'sign');
+            document.getElementById('stamp-template').style.borderRadius = (saved === 'rect' || saved === 'sign') ? '4px' : '50%';
 
             // 部門章預設今天日期
             const today = new Date();
@@ -2799,6 +2998,7 @@
                 document.getElementById('rect-aspect-ratio').value = ra;
                 document.getElementById('rect-ratio-label').textContent = (parseInt(ra)/10).toFixed(1) + ' : 1';
             }
+            renderSignList();
             // 頁面一開始已用 HTML 預設值畫過一次章，欄位還原後要重畫，否則蓋出去的還是預設名字
             generateStampImage();
         })();
@@ -2832,6 +3032,8 @@
                 ? (document.getElementById('dept-name').value.trim() || '部門') + '章'
                 : style === 'rect'
                 ? document.getElementById('rect-stamp-name').value.trim() || '方章'
+                : style === 'sign'
+                ? '簽名'
                 : stampNameInput.value.trim() || '圓章';
             presets.push({
                 label, style,
@@ -2843,6 +3045,7 @@
                 rectName:   document.getElementById('rect-stamp-name').value.trim(),
                 rectBorder: document.getElementById('rect-border-width').value,
                 color:      document.getElementById('stamp-color').value,
+                signId:     style === 'sign' ? (getSelectedSignature() || {}).id : undefined,
                 size:       stampSizeInput.value,
                 rotation:   stampRotationInput.value,
             });
@@ -2872,9 +3075,11 @@
                 s_color: p.color, s_size: p.size, s_rotation: p.rotation, s_name: p.name,
                 dept_name: p.deptName, dept_person: p.deptPerson,
                 rect_stamp_name: p.rectName, rect_border_width: p.rectBorder,
+                sign_selected: p.signId,
             };
             Object.entries(keep).forEach(([k, v]) => { if (v) localStorage.setItem(k, v); });
             syncColorSwatches();
+            renderSignList();
             if (p.style) setStampStyle(p.style);
             else generateStampImage();
         }
